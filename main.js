@@ -29,7 +29,7 @@ const CLICK_THRESHOLD = 5
 
 // Координаты для нового события
 let newEventCoords = null
-н
+
 // Переменные для рисования линий
 let isLineMode = false
 let lineStartPoint = null
@@ -42,12 +42,10 @@ window.addEventListener('load', async () => {
 		await db.init()
 		await loadEvents()
 		setInterval(removeExpiredEvents, 60000)
-
-		// Добавляем обработчик для кнопки инструмента линии
-		const lineToolButton = document.getElementById('lineToolButton')
-		if (lineToolButton) {
-			lineToolButton.addEventListener('click', toggleLineMode)
-		}
+		
+		// Добавляем обработчики для кнопок
+		document.getElementById('lineToolButton').addEventListener('click', toggleLineMode)
+		document.getElementById('liveNewsButton').addEventListener('click', showLiveNewsNotification)
 	} catch (error) {
 		console.error('Ошибка при инициализации:', error)
 	}
@@ -58,15 +56,13 @@ async function loadEvents() {
 	try {
 		const events = await db.getAllEvents()
 		markerContainer.innerHTML = ''
-		events
-			.filter(e => e.status === 'approved')
-			.forEach(event => {
-				if (event.isLine) {
-					createLineElement(event)
-				} else {
-					createEventMarker(event)
-				}
-			})
+		events.filter(e => e.status === 'approved').forEach(event => {
+			if (event.isLine) {
+				createLineElement(event)
+			} else {
+				createEventMarker(event)
+			}
+		})
 	} catch (error) {
 		console.error('Ошибка загрузки мероприятий:', error)
 	}
@@ -109,12 +105,10 @@ function createEventMarker(event) {
 
 // Создание линии
 function createLineElement(event) {
-	// Проверяем, существует ли уже такой элемент
-	const existingLine = document.querySelector(
-		`[data-event-id="${event.id}"].event-line`
-	)
+	// Проверяем, существует ли уже элемент для этой линии
+	const existingLine = document.querySelector(`[data-event-id="${event.id}"]`)
 	if (existingLine) {
-		return
+		existingLine.remove()
 	}
 
 	const lineContainer = document.createElement('div')
@@ -128,26 +122,25 @@ function createLineElement(event) {
 	lineContainer.dataset.eventId = event.id
 
 	const line = document.createElement('div')
+	line.className = 'line-element'
 	line.style.position = 'absolute'
 	line.style.backgroundColor = getLineColor(event.type)
 	line.style.height = '3px'
 	line.style.left = `${event.x1}%`
 	line.style.top = `${event.y1}%`
-
+	
 	// Вычисляем длину и угол линии
-	const length = Math.sqrt(
-		Math.pow(event.x2 - event.x1, 2) + Math.pow(event.y2 - event.y1, 2)
-	)
-	const angle =
-		(Math.atan2(event.y2 - event.y1, event.x2 - event.x1) * 180) / Math.PI
-
+	const deltaX = event.x2 - event.x1
+	const deltaY = event.y2 - event.y1
+	const length = Math.sqrt(Math.pow(deltaX, 2) + Math.pow(deltaY, 2))
+	const angle = Math.atan2(deltaY, deltaX) * 180 / Math.PI
+	
 	line.style.width = `${length}%`
 	line.style.transformOrigin = '0 0'
 	line.style.transform = `rotate(${angle}deg)`
 	line.style.pointerEvents = 'auto'
 	line.style.cursor = 'pointer'
-	line.style.zIndex = '998'
-
+	
 	line.addEventListener('click', e => {
 		e.stopPropagation()
 		showEventDetails(event)
@@ -160,11 +153,11 @@ function createLineElement(event) {
 
 function getLineColor(type) {
 	const colors = {
-		government: '#1E90FF', // DodgerBlue
-		civilian: '#32CD32', // LimeGreen
-		incident: '#FF4500', // OrangeRed
+		government: '#FF0000',
+		civilian: '#FF0000',
+		incident: '#FF0000'
 	}
-	return colors[type] || '#000000'
+	return colors[type] || '#FF0000'
 }
 
 // Применение трансформации
@@ -281,8 +274,12 @@ window.addEventListener('mouseup', function (e) {
 	const moveX = Math.abs(e.clientX - mouseDownX)
 	const moveY = Math.abs(e.clientY - mouseDownY)
 
-	if (moveX < CLICK_THRESHOLD && moveY < CLICK_THRESHOLD) {
-		// Это был клик - создаем событие
+	// Проверяем, не кликнули ли мы на элемент линии
+	const isOnLineElement = e.target.closest('.line-element');
+	const isOnMarker = e.target.closest('.event-marker');
+
+	if (moveX < CLICK_THRESHOLD && moveY < CLICK_THRESHOLD && !isOnLineElement && !isOnMarker) {
+		// Это был клик на пустом месте - создаем событие
 		handleMapClick(e)
 	}
 })
@@ -293,7 +290,7 @@ function handleMapClick(e) {
 		handleLineClick(e)
 		return
 	}
-
+	
 	const containerRect = container.getBoundingClientRect()
 	const clickX = e.clientX - containerRect.left
 	const clickY = e.clientY - containerRect.top
@@ -316,12 +313,14 @@ function handleMapClick(e) {
 function toggleLineMode() {
 	isLineMode = !isLineMode
 	const button = document.getElementById('lineToolButton')
-
+	
 	if (isLineMode) {
 		button.classList.add('active')
 		container.style.cursor = 'crosshair'
 		lineStartPoint = null
 		lineEndPoint = null
+		// Показываем уведомление при активации режима рисования
+		alert('Выберите две точки для установки мероприятия-линии')
 	} else {
 		button.classList.remove('active')
 		container.style.cursor = 'grab'
@@ -369,7 +368,7 @@ function createTempLine(x1, y1, x2, y2) {
 	if (tempLine) {
 		tempLine.remove()
 	}
-
+	
 	tempLine = document.createElement('div')
 	tempLine.className = 'temp-line'
 	tempLine.style.position = 'absolute'
@@ -379,13 +378,13 @@ function createTempLine(x1, y1, x2, y2) {
 	tempLine.style.height = '100%'
 	tempLine.style.pointerEvents = 'none'
 	tempLine.style.zIndex = '999'
-
+	
 	const line = document.createElement('div')
 	line.style.position = 'absolute'
 	line.style.backgroundColor = '#FF0000'
 	line.style.height = '2px'
 	line.style.transformOrigin = '0 0'
-
+	
 	tempLine.appendChild(line)
 	markerContainer.appendChild(tempLine)
 	updateTempLine(x1, y1, x2, y2)
@@ -393,20 +392,11 @@ function createTempLine(x1, y1, x2, y2) {
 
 function updateTempLine(x1, y1, x2, y2) {
 	if (!tempLine) return
-
+	
 	const line = tempLine.querySelector('div')
 	const length = Math.sqrt(Math.pow(x2 - x1, 2) + Math.pow(y2 - y1, 2))
-	const angle = (Math.atan2(y2 - y1, x2 - x1) * 180) / Math.PI
-
-	// Преобразуем проценты в пиксели
-	const mapWidth = map.offsetWidth
-	const mapHeight = map.offsetHeight
-
-	const pixelX1 = (x1 / 100) * mapWidth
-	const pixelY1 = (y1 / 100) * mapHeight
-	const pixelX2 = (x2 / 100) * mapWidth
-	const pixelY2 = (y2 / 100) * mapHeight
-
+	const angle = Math.atan2(y2 - y1, x2 - x1) * 180 / Math.PI
+	
 	line.style.width = `${length}%`
 	line.style.left = `${x1}%`
 	line.style.top = `${y1}%`
@@ -430,13 +420,28 @@ function closeEventModal() {
 	document.getElementById('eventModal').style.display = 'none'
 	document.getElementById('eventForm').reset()
 	newEventCoords = null
+	
+	// Убедимся, что режим рисования линии отключен при закрытии модального окна
+	if (isLineMode) {
+		isLineMode = false
+		document.getElementById('lineToolButton').classList.remove('active')
+		container.style.cursor = 'grab'
+		
+		// Удаляем временные элементы, если есть
+		if (tempLine) {
+			tempLine.remove()
+			tempLine = null
+		}
+		lineStartPoint = null
+		lineEndPoint = null
+	}
 }
 
 // Новое модальное окно для линий
 function openLineModal() {
 	// Используем существующее модальное окно, но добавим скрытое поле для типа
 	const form = document.getElementById('eventForm')
-
+	
 	// Добавляем скрытое поле для указания, что это линия
 	let lineTypeInput = document.getElementById('lineTypeInput')
 	if (!lineTypeInput) {
@@ -447,28 +452,25 @@ function openLineModal() {
 		lineTypeInput.value = 'true'
 		form.appendChild(lineTypeInput)
 	}
-
+	
 	// Открываем модальное окно
 	openEventModal()
 }
 
 function closeLineModal() {
 	closeEventModal()
-
+	
 	// Убираем скрытое поле
 	const lineTypeInput = document.getElementById('lineTypeInput')
 	if (lineTypeInput) {
 		lineTypeInput.remove()
 	}
-
+	
 	// Выходим из режима линии
 	isLineMode = false
-	const lineToolButton = document.getElementById('lineToolButton')
-	if (lineToolButton) {
-		lineToolButton.classList.remove('active')
-	}
+	document.getElementById('lineToolButton').classList.remove('active')
 	container.style.cursor = 'grab'
-
+	
 	// Удаляем временную линию
 	removeTempLine()
 	lineStartPoint = null
@@ -530,7 +532,7 @@ document
 
 		// Проверяем, является ли это созданием линии
 		const isLine = document.getElementById('lineTypeInput')
-
+		
 		if (isLine) {
 			// Создание линии
 			await createLineEvent()
@@ -754,13 +756,7 @@ async function approveEvent(id) {
 	try {
 		const event = await db.approveEvent(id)
 		await loadQueuedEvents()
-
-		// Если это линия, создаем элемент линии, иначе маркер
-		if (event.isLine) {
-			createLineElement(event)
-		} else {
-			createEventMarker(event)
-		}
+		await loadEvents() // Refresh all events on the map
 	} catch (error) {
 		console.error('Ошибка при одобрении события:', error)
 		alert('Не удалось одобрить событие')
@@ -781,4 +777,9 @@ async function rejectEvent(id) {
 		console.error('Ошибка при отклонении события:', error)
 		alert('Не удалось отклонить событие')
 	}
+}
+
+// Функция для отображения уведомления о том, что функция находится в разработке
+function showLiveNewsNotification() {
+	alert('Функция в разработке')
 }
