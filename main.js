@@ -58,19 +58,40 @@ window.addEventListener('load', async () => {
 // Загрузка событий
 async function loadEvents() {
 	try {
+		// Загружаем события
 		const events = await db.getAllEvents()
-		markerContainer.innerHTML = ''
-		events
-			.filter(e => e.status === 'approved')
-			.forEach(event => {
-				if (event.isLine) {
-					createLineElement(event)
-				} else {
-					createEventMarker(event)
-				}
-			})
+		
+		// Фильтруем только одобренные события
+		const approvedEvents = events.filter(e => e.status === 'approved')
+
+		// Сохраняем данные для отслеживания изменений
+		if (!window.lastEventsData) {
+			window.lastEventsData = JSON.stringify(approvedEvents)
+		}
+
+		// Очищаем только маркеры, не трогаем линии
+		const markerContainer = document.getElementById('markerContainer')
+		
+		// Удаляем только одобренные маркеры/линии, сохраняем остальные
+		const existingMarkers = markerContainer.querySelectorAll('[data-event-id]')
+		existingMarkers.forEach(marker => {
+			const eventId = marker.dataset.eventId
+			const eventExists = approvedEvents.some(e => e.id === eventId)
+			if (eventExists) {
+				marker.remove()
+			}
+		})
+
+		// Создаем маркеры для каждого события
+		approvedEvents.forEach(event => {
+			if (event.isLine) {
+				createLineElement(event)
+			} else {
+				createEventMarker(event)
+			}
+		})
 	} catch (error) {
-		console.error('Ошибка загрузки мероприятий:', error)
+		console.error('Ошибка при загрузке мероприятий:', error)
 	}
 }
 
@@ -448,6 +469,24 @@ function closeEventModal() {
 	}
 }
 
+function closeEventForm() {
+	eventForm.classList.remove('active')
+	eventForm.innerHTML = ''
+
+	// Возобновляем автоматическое обновление
+	startAutoRefresh()
+}
+
+function closeEventDetailsModal() {
+	const modal = document.getElementById('eventDetailsModal')
+	if (modal) {
+		modal.style.display = 'none'
+	}
+
+	// Возобновляем автоматическое обновление
+	startAutoRefresh()
+}
+
 // Новое модальное окно для линий
 function openLineModal() {
 	// Используем существующее модальное окно, но добавим скрытое поле для типа
@@ -505,8 +544,11 @@ function showEventDetails(event) {
 	modal.style.display = 'flex'
 }
 
-function closeEventDetailsModal() {
-	document.getElementById('eventDetailsModal').style.display = 'none'
+function closeAdminPanel() {
+	document.getElementById('adminPanelModal').style.display = 'none'
+
+	// Возобновляем автоматическое обновление
+	startAutoRefresh()
 }
 
 // ==================== ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ====================
@@ -572,6 +614,12 @@ async function createRegularEvent() {
 		const result = await db.addEvent(eventData)
 		closeEventModal()
 		alert(result.message || 'Событие добавлено в очередь на одобрение')
+
+		// Обновляем данные для отслеживания изменений
+		const events = await db.getAllEvents()
+		window.lastEventsData = JSON.stringify(
+			events.filter(e => e.status === 'approved')
+		)
 	} catch (error) {
 		console.error('Ошибка при создании мероприятия:', error)
 		alert('Не удалось создать мероприятие')
@@ -600,6 +648,12 @@ async function createLineEvent() {
 		const result = await db.addEvent(eventData)
 		closeLineModal()
 		alert(result.message || 'Линия добавлена в очередь на одобрение')
+
+		// Обновляем данные для отслеживания изменений
+		const events = await db.getAllEvents()
+		window.lastEventsData = JSON.stringify(
+			events.filter(e => e.status === 'approved')
+		)
 	} catch (error) {
 		console.error('Ошибка при создании линии:', error)
 		alert('Не удалось создать линию')
@@ -646,10 +700,6 @@ async function openAdminPanel() {
 	}
 }
 
-function closeAdminPanel() {
-	document.getElementById('adminPanelModal').style.display = 'none'
-}
-
 async function loadAdminEvents() {
 	try {
 		const allEvents = await db.getAllEvents()
@@ -688,10 +738,17 @@ async function deleteEvent(eventId) {
 
 	try {
 		await db.deleteEvent(eventId)
+		// Удаляем маркер с карты
 		const marker = document.querySelector(`[data-event-id="${eventId}"]`)
 		if (marker) marker.remove()
 		await loadAdminEvents()
 		await loadEvents()
+
+		// Принудительно обновляем данные для отслеживания изменений
+		const events = await db.getAllEvents()
+		window.lastEventsData = JSON.stringify(
+			events.filter(e => e.status === 'approved')
+		)
 	} catch (error) {
 		console.error('Ошибка при удалении мероприятия:', error)
 		alert('Не удалось удалить мероприятие')
@@ -765,14 +822,26 @@ async function approveEvent(id) {
 	if (!confirm('Вы уверены, что хотите одобрить это событие?')) return
 
 	try {
-		const response = await db.approveEvent(id)
+		// 1. Одобряем событие в базе данных
+		await db.approveEvent(id)
+
+		// 2. Принудительно загружаем все события из БД
+		const updatedEvents = await db.getAllEvents()
+
+		// 3. Обновляем глобальный отслеживаемый объект данных
+		window.lastEventsData = JSON.stringify(
+			updatedEvents.filter(e => e.status === 'approved')
+		)
+
+		// 4. Перезагружаем события на карте
+		await loadEvents()
+
+		// 5. Обновляем очередь в админ-панели
 		await loadQueuedEvents()
-		await loadEvents() // Refresh all events on the map
-		await loadAdminEvents() // Added admin panel refresh
-		
-		// Принудительно обновляем данные для отслеживания изменений
-		const events = await db.getAllEvents();
-		window.lastEventsData = JSON.stringify(events.filter(e => e.status === 'approved'));
+
+		console.log(
+			'Событие одобрено и все пользователи должны увидеть обновление.'
+		)
 	} catch (error) {
 		console.error('Ошибка при одобрении события:', error)
 		alert('Не удалось одобрить событие')
@@ -795,7 +864,65 @@ async function rejectEvent(id) {
 	}
 }
 
+// Функция для определения мобильного устройства
+function isMobileDevice() {
+	return /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(
+		navigator.userAgent
+	)
+}
+
+// Проверка мобильного устройства при загрузке страницы
+document.addEventListener('DOMContentLoaded', () => {
+	if (isMobileDevice()) {
+		// Перенаправляем на мобильную страницу
+		window.location.href = 'mobile.html'
+		return
+	}
+
+	// Существующая логика для десктопа
+	loadEvents()
+	startAutoRefresh()
+})
+
 // Функция для отображения уведомления о том, что функция находится в разработке
 function showLiveNewsNotification() {
 	alert('Функция в разработке')
 }
+
+// Добавляем функцию для автоматического обновления
+let pollInterval = null
+
+function startAutoRefresh() {
+	// Проверяем обновления каждые 5 секунд для более быстрой реакции
+	if (pollInterval) clearInterval(pollInterval)
+	pollInterval = setInterval(async () => {
+		try {
+			const events = await db.getAllEvents()
+			const currentEventsData = JSON.stringify(
+				events.filter(e => e.status === 'approved')
+			)
+
+			// Проверяем, изменились ли данные
+			if (window.lastEventsData !== currentEventsData) {
+				window.lastEventsData = currentEventsData // Обновляем данные до загрузки
+				await loadEvents()
+				console.log('Events updated automatically')
+			}
+		} catch (error) {
+			console.error('Error checking for updates:', error)
+		}
+	}, 5000) // 5 секунд для более быстрой реакции на изменения
+}
+
+function stopAutoRefresh() {
+	if (pollInterval) {
+		clearInterval(pollInterval)
+		pollInterval = null
+	}
+}
+
+// Начинаем автоматическое обновление при загрузке страницы
+document.addEventListener('DOMContentLoaded', () => {
+	loadEvents()
+	startAutoRefresh()
+})
