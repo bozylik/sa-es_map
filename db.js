@@ -2,7 +2,8 @@
 class EventDatabase {
 	constructor() {
 		// Базовый URL для API
-		this.apiUrl = 'http://localhost:3000/api'
+		// ИЗМЕНИТЬ: используем относительный путь /api, чтобы запрос шел на тот же домен
+		this.apiUrl = '/api'
 		this.eventsUrl = `${this.apiUrl}/events`
 		this.queueUrl = `${this.apiUrl}/queue`
 	}
@@ -102,7 +103,8 @@ class EventDatabase {
 	async getQueuedEvents() {
 		try {
 			const response = await fetch(this.queueUrl)
-			if (!response.ok) throw new Error('Не удалось получить события из очереди')
+			if (!response.ok)
+				throw new Error('Не удалось получить события из очереди')
 			return await response.json()
 		} catch (error) {
 			console.error('Ошибка при получении событий из очереди:', error)
@@ -117,7 +119,7 @@ class EventDatabase {
 				method: 'POST',
 				headers: {
 					'Content-Type': 'application/json',
-				}
+				},
 			})
 
 			if (!response.ok) throw new Error('Не удалось одобрить событие')
@@ -136,7 +138,7 @@ class EventDatabase {
 				headers: {
 					'Content-Type': 'application/json',
 				},
-				body: JSON.stringify({ reason })
+				body: JSON.stringify({ reason }),
 			})
 
 			if (!response.ok) throw new Error('Не удалось отклонить событие')
