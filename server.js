@@ -8,55 +8,50 @@ const PORT = 3000
 const DB_PATH = path.join(__dirname, 'events.json')
 const QUEUE_PATH = path.join(__dirname, 'queue.json')
 
-// Middleware
-app.use(cors()) // Разрешаем CORS для всех источников
+app.use(cors())
 app.use(express.json())
-app.use(express.static('public'))
-app.use(express.static('.')) // Раздаем статические файлы из текущей директории
+app.use(express.static('.'))
 
-// Маршрут для корневой страницы
 app.get('/', (req, res) => {
 	res.sendFile(path.join(__dirname, 'index.html'))
 })
 
-// Инициализация базы данных
+// Инициализация БД
 async function initDatabase() {
 	try {
 		await fs.access(DB_PATH)
 	} catch {
-		// Если файл не существует, создаем его с пустым массивом
 		await fs.writeFile(DB_PATH, JSON.stringify([]))
+	}
+	
+	// Инициализация очереди
+	try {
+		await fs.access(QUEUE_PATH)
+	} catch {
+		await fs.writeFile(QUEUE_PATH, JSON.stringify([]))
 	}
 }
 
-// Вспомогательные функции для работы с базой данных
+// Чтение/запись
 async function readEvents() {
-	const data = await fs.readFile(DB_PATH, 'utf-8')
+	const data = await fs.readFile(DB_PATH, 'utf8')
 	return JSON.parse(data)
 }
 
 async function writeEvents(events) {
-	try {
-		await fs.writeFile(DB_PATH, JSON.stringify(events, null, 2))
-	} catch (error) {
-		if (error.code === 'ENOENT') {
-			await fs.writeFile(DB_PATH, '[]')
-		}
-		throw error
-	}
+	await fs.writeFile(DB_PATH, JSON.stringify(events, null, 2))
 }
 
-// Вспомогательные функции для работы с очередью
 async function readQueue() {
 	try {
-		const data = await fs.readFile(QUEUE_PATH, 'utf-8')
+		const data = await fs.readFile(QUEUE_PATH, 'utf8')
 		return JSON.parse(data)
-	} catch (error) {
-		if (error.code === 'ENOENT') {
+	} catch (err) {
+		if (err.code === 'ENOENT') {
 			await fs.writeFile(QUEUE_PATH, '[]')
 			return []
 		}
-		throw error
+		throw err
 	}
 }
 
@@ -64,35 +59,26 @@ async function writeQueue(queue) {
 	await fs.writeFile(QUEUE_PATH, JSON.stringify(queue, null, 2))
 }
 
-// Проверка подключения
-app.get('/api/events/ping', (req, res) => {
-	res.json({ status: 'ok' })
-})
+// API
+app.get('/api/events/ping', (req, res) => res.json({ status: 'ok' }))
 
-// Получение всех мероприятий
 app.get('/api/events', async (req, res) => {
 	try {
-		const events = await readEvents()
-		res.json(events)
-	} catch (error) {
-		res.status(500).json({ error: 'Ошибка при получении мероприятий' })
+		res.json(await readEvents())
+	} catch (err) {
+		res.status(500).json({ error: 'Ошибка загрузки мероприятий' })
 	}
 })
 
-// Получение мероприятий по типу
 app.get('/api/events/type/:type', async (req, res) => {
 	try {
 		const events = await readEvents()
-		const filteredEvents = events.filter(
-			event => event.type === req.params.type
-		)
-		res.json(filteredEvents)
-	} catch (error) {
-		res.status(500).json({ error: 'Ошибка при получении мероприятий по типу' })
+		res.json(events.filter(e => e.type === req.params.type))
+	} catch (err) {
+		res.status(500).json({ error: 'Ошибка фильтрации' })
 	}
 })
 
-// Добавление нового мероприятия в очередь
 app.post('/api/events', async (req, res) => {
 	try {
 		const queue = await readQueue()
@@ -104,158 +90,108 @@ app.post('/api/events', async (req, res) => {
 		}
 		queue.push(newEvent)
 		await writeQueue(queue)
-		res.status(201).json({
-			message: 'Событие добавлено в очередь на одобрение',
-			event: newEvent,
-		})
-	} catch (error) {
-		res.status(500).json({ error: 'Ошибка при добавлении события в очередь' })
+		res.status(201).json({ message: 'Добавлено в очередь', event: newEvent })
+	} catch (err) {
+		res.status(500).json({ error: 'Ошибка добавления' })
 	}
 })
 
-// Удаление мероприятия
 app.delete('/api/events/:id', async (req, res) => {
 	try {
+		const id = parseInt(req.params.id)
 		const events = await readEvents()
-		const filteredEvents = events.filter(
-			event => event.id !== parseInt(req.params.id)
-		)
-		await writeEvents(filteredEvents)
-		res.status(200).json({ message: 'Мероприятие удалено' })
-	} catch (error) {
-		res.status(500).json({ error: 'Ошибка при удалении мероприятия' })
-	}
-})
-
-// Обновление мероприятия
-// Получение списка событий в очереди
-app.get('/api/queue', async (req, res) => {
-	try {
-		const queue = await readQueue()
-		res.json(queue)
-	} catch (error) {
-		res.status(500).json({ error: 'Ошибка при получении очереди событий' })
-	}
-})
-
-// Одобрение события из очереди
-app.post('/api/queue/:id/approve', async (req, res) => {
-	try {
-		const queue = await readQueue()
-		const events = await readEvents()
-
-		const eventIndex = queue.findIndex(
-			event => event.id === parseInt(req.params.id)
-		)
-		if (eventIndex === -1) {
-			return res.status(404).json({ error: 'Событие не найдено в очереди' })
-		}
-
-		const event = queue[eventIndex]
-		event.status = 'approved'
-		events.push(event)
-
-		queue.splice(eventIndex, 1)
-
-		await writeQueue(queue)
-		await writeEvents(events)
-
-		res.json({ message: 'Событие одобрено', event })
-	} catch (error) {
-		res.status(500).json({ error: 'Ошибка при одобрении события' })
-	}
-})
-
-// Отклонение события из очереди
-app.post('/api/queue/:id/reject', async (req, res) => {
-	try {
-		const queue = await readQueue()
-		const eventIndex = queue.findIndex(
-			event => event.id === parseInt(req.params.id)
-		)
-
-		if (eventIndex === -1) {
-			return res.status(404).json({ error: 'Событие не найдено в очереди' })
-		}
-
-		const event = queue[eventIndex]
-		event.status = 'rejected'
-		event.rejectionReason = req.body.reason || 'Причина не указана'
-
-		queue.splice(eventIndex, 1)
-		await writeQueue(queue)
-
-		res.json({ message: 'Событие отклонено', event })
-	} catch (error) {
-		res.status(500).json({ error: 'Ошибка при отклонении события' })
+		const filtered = events.filter(e => e.id !== id)
+		await writeEvents(filtered)
+		res.json({ message: 'Удалено' })
+	} catch (err) {
+		res.status(500).json({ error: 'Ошибка удаления' })
 	}
 })
 
 app.put('/api/events/:id', async (req, res) => {
 	try {
+		const id = parseInt(req.params.id)
 		const events = await readEvents()
-		const index = events.findIndex(
-			event => event.id === parseInt(req.params.id)
-		)
-		if (index === -1) {
-			return res.status(404).json({ error: 'Мероприятие не найдено' })
-		}
-		events[index] = { ...req.body, id: parseInt(req.params.id) }
+		const index = events.findIndex(e => e.id === id)
+		if (index === -1) return res.status(404).json({ error: 'Не найдено' })
+		events[index] = { ...req.body, id }
 		await writeEvents(events)
 		res.json(events[index])
-	} catch (error) {
-		res.status(500).json({ error: 'Ошибка при обновлении мероприятия' })
+	} catch (err) {
+		res.status(500).json({ error: 'Ошибка обновления' })
 	}
 })
 
-// Автоматическое удаление истекших мероприятий
+app.get('/api/queue', async (req, res) => {
+	try {
+		res.json(await readQueue())
+	} catch (err) {
+		res.status(500).json({ error: 'Ошибка загрузки очереди' })
+	}
+})
+
+app.post('/api/queue/:id/approve', async (req, res) => {
+	try {
+		const id = parseInt(req.params.id)
+		const queue = await readQueue()
+		const events = await readEvents()
+		const idx = queue.findIndex(e => e.id === id)
+		if (idx === -1) return res.status(404).json({ error: 'Не в очереди' })
+
+		const event = { ...queue[idx], status: 'approved' }
+		events.push(event)
+		queue.splice(idx, 1)
+
+		await writeQueue(queue)
+		await writeEvents(events)
+		res.json({ message: 'Одобрено', event })
+	} catch (err) {
+		res.status(500).json({ error: 'Ошибка одобрения' })
+	}
+})
+
+app.post('/api/queue/:id/reject', async (req, res) => {
+	try {
+		const id = parseInt(req.params.id)
+		const queue = await readQueue()
+		const idx = queue.findIndex(e => e.id === id)
+		if (idx === -1) return res.status(404).json({ error: 'Не в очереди' })
+
+		const event = {
+			...queue[idx],
+			status: 'rejected',
+			rejectionReason: req.body.reason || 'Не указана',
+		}
+		queue.splice(idx, 1)
+		await writeQueue(queue)
+		res.json({ message: 'Отклонено', event })
+	} catch (err) {
+		res.status(500).json({ error: 'Ошибка отклонения' })
+	}
+})
+
+// Очистка истёкших
 async function removeExpiredEvents() {
 	try {
 		const events = await readEvents()
 		const now = new Date()
-		const activeEvents = events.filter(event => new Date(event.endTime) > now)
-		if (activeEvents.length !== events.length) {
-			await writeEvents(activeEvents)
-			console.log('Истекшие мероприятия удалены')
+		const active = events.filter(e => new Date(e.end) > now)
+		if (active.length !== events.length) {
+			await writeEvents(active)
+			console.log('🧹 Удалены истёкшие мероприятия')
 		}
-	} catch (error) {
-		console.error('Ошибка при удалении истекших мероприятий:', error)
+	} catch (err) {
+		console.error('Ошибка очистки:', err)
 	}
 }
 
-// Запуск очистки каждые 5 минут и в 4:00 МСК
-function scheduleDailyCleanup() {
-	const now = new Date()
-	const mskOffset = 3 // МСК = UTC+3
-	const targetHour = 4 // 4:00
-
-	// Вычисляем время до следующей очистки
-	const mskHour = (now.getUTCHours() + mskOffset) % 24
-	const mskMinutes = now.getUTCMinutes()
-
-	let timeToNextCleanup
-	if (mskHour < targetHour || (mskHour === targetHour && mskMinutes === 0)) {
-		timeToNextCleanup = ((targetHour - mskHour) * 60 - mskMinutes) * 60 * 1000
-	} else {
-		timeToNextCleanup =
-			((24 - mskHour + targetHour) * 60 - mskMinutes) * 60 * 1000
-	}
-
-	setTimeout(() => {
-		removeExpiredEvents()
-		scheduleDailyCleanup()
-	}, timeToNextCleanup)
-}
-
-// Запуск сервера
-async function startServer() {
+// Запуск
+async function start() {
 	await initDatabase()
 	app.listen(PORT, () => {
-		console.log(`Сервер запущен на порту ${PORT}`)
-		// Запускаем периодическую очистку
-		setInterval(removeExpiredEvents, 5 * 60 * 1000) // Каждые 5 минут
-		scheduleDailyCleanup() // Планируем ежедневную очистку в 4:00 МСК
+		console.log(`🚀 Сервер запущен на http://localhost:${PORT}`)
+		setInterval(removeExpiredEvents, 5 * 60 * 1000)
 	})
 }
 
-startServer().catch(console.error)
+start().catch(console.error)

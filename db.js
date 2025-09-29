@@ -98,55 +98,6 @@ class EventDatabase {
 		}
 	}
 
-	// Получение событий из очереди
-	async getQueuedEvents() {
-		try {
-			const response = await fetch(this.queueUrl)
-			if (!response.ok) throw new Error('Не удалось получить события из очереди')
-			return await response.json()
-		} catch (error) {
-			console.error('Ошибка при получении событий из очереди:', error)
-			throw error
-		}
-	}
-
-	// Одобрение события
-	async approveEvent(id) {
-		try {
-			const response = await fetch(`${this.queueUrl}/${id}/approve`, {
-				method: 'POST',
-				headers: {
-					'Content-Type': 'application/json',
-				}
-			})
-
-			if (!response.ok) throw new Error('Не удалось одобрить событие')
-			return await response.json()
-		} catch (error) {
-			console.error('Ошибка при одобрении события:', error)
-			throw error
-		}
-	}
-
-	// Отклонение события
-	async rejectEvent(id, reason = '') {
-		try {
-			const response = await fetch(`${this.queueUrl}/${id}/reject`, {
-				method: 'POST',
-				headers: {
-					'Content-Type': 'application/json',
-				},
-				body: JSON.stringify({ reason })
-			})
-
-			if (!response.ok) throw new Error('Не удалось отклонить событие')
-			return await response.json()
-		} catch (error) {
-			console.error('Ошибка при отклонении события:', error)
-			throw error
-		}
-	}
-
 	// Новые методы для работы с очередью
 
 	// Получение всех событий в очереди
