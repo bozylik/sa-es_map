@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="ru">
+	<head>
+		<meta charset="UTF-8" />
+		<meta http-equiv="X-UA-Compatible" content="IE=edge" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Карта GTA SA</title>
+		<link rel="stylesheet" href="styles.css" />
+	</head>
+	<body>
+		<div class="button-container">
+			<button class="admin-button" id="liveNewsButton">
+				LIVE Новости
+			</button>
+			<button class="admin-button">
+				Информация
+			</button>
+		</div>
+		<button class="admin-button admin-panel-button" onclick="openAdminLogin()">
+			Админ-панель
+		</button>
+		<button class="tool-button" id="lineToolButton" title="Инструмент линии">
+			<img src="icons/draw.png" alt="Рисование" width="24" height="24" />
+		</button>
+		<div class="map-scroll-outer">
+			<div class="map-container" id="mapContainer">
+				<img src="gta_sa.png" alt="Карта GTA SA" class="full-map" id="map" />
+				<div id="markerContainer"></div>
+			</div>
+		</div>
+
+		<!-- Модальное окно для создания мероприятия -->
+		<div class="event-modal" id="eventModal">
+			<form class="event-form" id="eventForm">
+				<input
+					type="text"
+					id="eventName"
+					placeholder="Название мероприятия"
+					required
+				/>
+				<select id="eventType" required>
+					<option value="">Выберите тип мероприятия</option>
+					<option value="government">Государственное</option>
+					<option value="civilian">Гражданское</option>
+					<option value="incident">Происшествие</option>
+				</select>
+				<input type="datetime-local" id="eventStart" required />
+				<input type="datetime-local" id="eventEnd" required />
+				<textarea
+					id="eventDescription"
+					placeholder="Описание мероприятия"
+					rows="4"
+				></textarea>
+				<div>
+					<button type="submit">Создать</button>
+					<button type="button" onclick="closeEventModal()">Отмена</button>
+				</div>
+			</form>
+		</div>
+
+		<!-- Модальное окно для просмотра мероприятия -->
+		<div class="event-details-modal" id="eventDetailsModal">
+			<div class="event-details-content">
+				<h3 id="detailsEventName"></h3>
+				<p><strong>Тип:</strong> <span id="detailsEventType"></span></p>
+				<p><strong>Начало:</strong> <span id="detailsEventStart"></span></p>
+				<p><strong>Конец:</strong> <span id="detailsEventEnd"></span></p>
+				<p><strong>Описание:</strong></p>
+				<p id="detailsEventDescription"></p>
+				<button type="button" onclick="closeEventDetailsModal()">
+					Закрыть
+				</button>
+			</div>
+		</div>
+
+		<!-- Модальное окно для входа в админ-панели -->
+		<div class="admin-modal" id="adminLoginModal">
+			<div class="admin-modal-content">
+				<h3>Вход в админ-панель</h3>
+				<input
+					type="password"
+					id="adminCode"
+					placeholder="Введите код доступа"
+				/>
+				<div class="button-group">
+					<button onclick="handleAdminLogin()" class="primary-button">
+						Войти
+					</button>
+					<button onclick="closeAdminLogin()" class="secondary-button">
+						Отмена
+					</button>
+				</div>
+			</div>
+		</div>
+
+		<!-- Модальное окно админ-панели -->
+		<div class="admin-modal" id="adminPanelModal">
+			<div class="admin-modal-content">
+				<h3>Панель управления</h3>
+				<div class="admin-tabs">
+					<button class="tab-button active" onclick="switchAdminTab('events')">
+						Мероприятия
+					</button>
+					<button class="tab-button" onclick="switchAdminTab('queue')">
+						Очередь
+					</button>
+				</div>
+				<div class="admin-tab-content" id="eventsTab">
+					<div class="admin-events-list" id="adminEventList"></div>
+				</div>
+				<div class="admin-tab-content" id="queueTab" style="display: none">
+					<div class="queue-events-list" id="queueEventList"></div>
+				</div>
+				<button onclick="closeAdminPanel()" class="secondary-button">
+					Закрыть
+				</button>
+			</div>
+		</div>
+
+		<script src="db.js"></script>
+		<script src="main.js"></script>
+	</body>
+</html>
