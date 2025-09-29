@@ -18,6 +18,11 @@ app.get('/', (req, res) => {
 	res.sendFile(path.join(__dirname, 'index.html'))
 })
 
+// Маршрут для мобильной версии
+app.get('/mobile', (req, res) => {
+	res.sendFile(path.join(__dirname, 'mobile.html'))
+})
+
 // Инициализация базы данных SQLite
 function initDatabase() {
 	return new Promise((resolve, reject) => {

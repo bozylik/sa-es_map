@@ -839,6 +839,26 @@ async function rejectEvent(id) {
 	}
 }
 
+// Функция для определения мобильного устройства
+function isMobileDevice() {
+	return /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(
+		navigator.userAgent
+	)
+}
+
+// Проверка мобильного устройства при загрузке страницы
+document.addEventListener('DOMContentLoaded', () => {
+	if (isMobileDevice()) {
+		// Перенаправляем на мобильную страницу
+		window.location.href = 'mobile.html'
+		return
+	}
+
+	// Существующая логика для десктопа
+	loadEvents()
+	startAutoRefresh()
+})
+
 // Функция для отображения уведомления о том, что функция находится в разработке
 function showLiveNewsNotification() {
 	alert('Функция в разработке')
