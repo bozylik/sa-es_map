@@ -4,7 +4,7 @@ const fs = require('fs').promises
 const path = require('path')
 
 const app = express()
-const PORT = process.env.PORT || 3000
+const PORT = 3000
 const DB_PATH = path.join(__dirname, 'events.json')
 const QUEUE_PATH = path.join(__dirname, 'queue.json')
 
@@ -246,12 +246,13 @@ function scheduleDailyCleanup() {
 		scheduleDailyCleanup()
 	}, timeToNextCleanup)
 }
+
 // Запуск сервера
 async function startServer() {
 	await initDatabase()
-	app.listen(PORT, '0.0.0.0', () => {
-		// Добавлено '0.0.0.0'
+	app.listen(PORT, () => {
 		console.log(`Сервер запущен на порту ${PORT}`)
+		// Запускаем периодическую очистку
 		setInterval(removeExpiredEvents, 5 * 60 * 1000) // Каждые 5 минут
 		scheduleDailyCleanup() // Планируем ежедневную очистку в 4:00 МСК
 	})
