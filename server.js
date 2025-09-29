@@ -1,68 +1,99 @@
 const express = require('express')
 const cors = require('cors')
-const fs = require('fs').promises
+const sqlite3 = require('sqlite3').verbose()
 const path = require('path')
 
 const app = express()
-//const PORT = process.env.PORT || 3000
-const PORT = 8080
-const DB_PATH = path.join(__dirname, 'events.json')
-const QUEUE_PATH = path.join(__dirname, 'queue.json')
+const PORT = 3000
+const DB_PATH = path.join(__dirname, 'gtamap.db')
 
 // Middleware
-app.use(cors()) // Разрешаем CORS для всех источников
+app.use(cors())
 app.use(express.json())
 app.use(express.static('public'))
-app.use(express.static('.')) // Раздаем статические файлы из текущей директории
+app.use(express.static('.'))
 
 // Маршрут для корневой страницы
 app.get('/', (req, res) => {
 	res.sendFile(path.join(__dirname, 'index.html'))
 })
 
-// Инициализация базы данных
-async function initDatabase() {
-	try {
-		await fs.access(DB_PATH)
-	} catch {
-		// Если файл не существует, создаем его с пустым массивом
-		await fs.writeFile(DB_PATH, JSON.stringify([]))
-	}
+// Инициализация базы данных SQLite
+function initDatabase() {
+	return new Promise((resolve, reject) => {
+		const db = new sqlite3.Database(DB_PATH, err => {
+			if (err) {
+				console.error('Ошибка подключения к БД:', err)
+				reject(err)
+				return
+			}
+			console.log('Подключение к SQLite установлено')
+		})
+
+		// Создаем таблицу events если её нет
+		db.run(
+			`CREATE TABLE IF NOT EXISTS events (
+				id INTEGER PRIMARY KEY AUTOINCREMENT,
+				name TEXT NOT NULL,
+				type TEXT NOT NULL,
+				start TEXT NOT NULL,
+				end TEXT NOT NULL,
+				description TEXT,
+				x REAL,
+				y REAL,
+				x1 REAL,
+				y1 REAL,
+				x2 REAL,
+				y2 REAL,
+				isLine INTEGER DEFAULT 0,
+				status TEXT DEFAULT 'approved',
+				createdAt TEXT NOT NULL
+			)`,
+			err => {
+				if (err) {
+					console.error('Ошибка создания таблицы events:', err)
+					reject(err)
+					return
+				}
+			}
+		)
+
+		// Создаем таблицу queue если её нет
+		db.run(
+			`CREATE TABLE IF NOT EXISTS queue (
+				id INTEGER PRIMARY KEY AUTOINCREMENT,
+				name TEXT NOT NULL,
+				type TEXT NOT NULL,
+				start TEXT NOT NULL,
+				end TEXT NOT NULL,
+				description TEXT,
+				x REAL,
+				y REAL,
+				x1 REAL,
+				y1 REAL,
+				x2 REAL,
+				y2 REAL,
+				isLine INTEGER DEFAULT 0,
+				status TEXT DEFAULT 'pending',
+				createdAt TEXT NOT NULL,
+				rejectionReason TEXT
+			)`,
+			err => {
+				if (err) {
+					console.error('Ошибка создания таблицы queue:', err)
+					reject(err)
+					return
+				}
+				console.log('Таблицы созданы успешно')
+				resolve(db)
+			}
+		)
+	})
 }
 
-// Вспомогательные функции для работы с базой данных
-async function readEvents() {
-	const data = await fs.readFile(DB_PATH, 'utf-8')
-	return JSON.parse(data)
-}
-
-async function writeEvents(events) {
-	try {
-		await fs.writeFile(DB_PATH, JSON.stringify(events, null, 2))
-	} catch (error) {
-		if (error.code === 'ENOENT') {
-			await fs.writeFile(DB_PATH, '[]')
-		}
-		throw error
-	}
-}
-
-// Вспомогательные функции для работы с очередью
-async function readQueue() {
-	try {
-		const data = await fs.readFile(QUEUE_PATH, 'utf-8')
-		return JSON.parse(data)
-	} catch (error) {
-		if (error.code === 'ENOENT') {
-			await fs.writeFile(QUEUE_PATH, '[]')
-			return []
-		}
-		throw error
-	}
-}
-
-async function writeQueue(queue) {
-	await fs.writeFile(QUEUE_PATH, JSON.stringify(queue, null, 2))
+// Получение подключения к БД
+function getDb() {
+	return new sqlite3.Database(DB_PATH)
 }
 
 // Проверка подключения
@@ -70,167 +101,315 @@ app.get('/api/events/ping', (req, res) => {
 	res.json({ status: 'ok' })
 })
 
-// Получение всех мероприятий
-app.get('/api/events', async (req, res) => {
-	try {
-		const events = await readEvents()
-		res.json(events)
-	} catch (error) {
-		res.status(500).json({ error: 'Ошибка при получении мероприятий' })
-	}
+// Получение всех одобренных мероприятий
+app.get('/api/events', (req, res) => {
+	const db = getDb()
+	db.all(
+		`SELECT * FROM events WHERE status = 'approved' ORDER BY createdAt DESC`,
+		[],
+		(err, rows) => {
+			if (err) {
+				console.error('Ошибка получения мероприятий:', err)
+				res.status(500).json({ error: 'Ошибка при получении мероприятий' })
+				db.close()
+				return
+			}
+			// Преобразуем isLine из INTEGER в boolean
+			const events = rows.map(row => ({
+				...row,
+				isLine: Boolean(row.isLine),
+			}))
+			res.json(events)
+			db.close()
+		}
+	)
 })
 
 // Получение мероприятий по типу
-app.get('/api/events/type/:type', async (req, res) => {
-	try {
-		const events = await readEvents()
-		const filteredEvents = events.filter(
-			event => event.type === req.params.type
-		)
-		res.json(filteredEvents)
-	} catch (error) {
-		res.status(500).json({ error: 'Ошибка при получении мероприятий по типу' })
-	}
+app.get('/api/events/type/:type', (req, res) => {
+	const db = getDb()
+	db.all(
+		`SELECT * FROM events WHERE type = ? AND status = 'approved' ORDER BY createdAt DESC`,
+		[req.params.type],
+		(err, rows) => {
+			if (err) {
+				console.error('Ошибка получения мероприятий по типу:', err)
+				res
+					.status(500)
+					.json({ error: 'Ошибка при получении мероприятий по типу' })
+				db.close()
+				return
+			}
+			const events = rows.map(row => ({
+				...row,
+				isLine: Boolean(row.isLine),
+			}))
+			res.json(events)
+			db.close()
+		}
+	)
 })
 
 // Добавление нового мероприятия в очередь
-app.post('/api/events', async (req, res) => {
-	try {
-		const queue = await readQueue()
-		const newEvent = {
-			...req.body,
-			id: Date.now(),
-			status: 'pending',
-			createdAt: new Date().toISOString(),
+app.post('/api/events', (req, res) => {
+	const db = getDb()
+	const { name, type, start, end, description, x, y, x1, y1, x2, y2, isLine } =
+		req.body
+
+	const createdAt = new Date().toISOString()
+
+	db.run(
+		`INSERT INTO queue (name, type, start, end, description, x, y, x1, y1, x2, y2, isLine, status, createdAt)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?)`,
+		[
+			name,
+			type,
+			start,
+			end,
+			description || '',
+			x || null,
+			y || null,
+			x1 || null,
+			y1 || null,
+			x2 || null,
+			y2 || null,
+			isLine ? 1 : 0,
+			createdAt,
+		],
+		function (err) {
+			if (err) {
+				console.error('Ошибка добавления в очередь:', err)
+				res
+					.status(500)
+					.json({ error: 'Ошибка при добавлении события в очередь' })
+				db.close()
+				return
+			}
+			res.status(201).json({
+				message: 'Событие добавлено в очередь на одобрение',
+				event: {
+					id: this.lastID,
+					name,
+					type,
+					start,
+					end,
+					description,
+					x,
+					y,
+					x1,
+					y1,
+					x2,
+					y2,
+					isLine,
+					status: 'pending',
+					createdAt,
+				},
+			})
+			db.close()
 		}
-		queue.push(newEvent)
-		await writeQueue(queue)
-		res.status(201).json({
-			message: 'Событие добавлено в очередь на одобрение',
-			event: newEvent,
-		})
-	} catch (error) {
-		res.status(500).json({ error: 'Ошибка при добавлении события в очередь' })
-	}
+	)
 })
 
 // Удаление мероприятия
-app.delete('/api/events/:id', async (req, res) => {
-	try {
-		const events = await readEvents()
-		const filteredEvents = events.filter(
-			event => event.id !== parseInt(req.params.id)
-		)
-		await writeEvents(filteredEvents)
+app.delete('/api/events/:id', (req, res) => {
+	const db = getDb()
+	db.run(`DELETE FROM events WHERE id = ?`, [req.params.id], function (err) {
+		if (err) {
+			console.error('Ошибка удаления мероприятия:', err)
+			res.status(500).json({ error: 'Ошибка при удалении мероприятия' })
+			db.close()
+			return
+		}
 		res.status(200).json({ message: 'Мероприятие удалено' })
-	} catch (error) {
-		res.status(500).json({ error: 'Ошибка при удалении мероприятия' })
-	}
+		db.close()
+	})
 })
 
-// Обновление мероприятия
 // Получение списка событий в очереди
-app.get('/api/queue', async (req, res) => {
-	try {
-		const queue = await readQueue()
+app.get('/api/queue', (req, res) => {
+	const db = getDb()
+	db.all(`SELECT * FROM queue ORDER BY createdAt DESC`, [], (err, rows) => {
+		if (err) {
+			console.error('Ошибка получения очереди:', err)
+			res.status(500).json({ error: 'Ошибка при получении очереди событий' })
+			db.close()
+			return
+		}
+		const queue = rows.map(row => ({
+			...row,
+			isLine: Boolean(row.isLine),
+		}))
 		res.json(queue)
-	} catch (error) {
-		res.status(500).json({ error: 'Ошибка при получении очереди событий' })
-	}
+		db.close()
+	})
 })
 
 // Одобрение события из очереди
-app.post('/api/queue/:id/approve', async (req, res) => {
-	try {
-		const queue = await readQueue()
-		const events = await readEvents()
+app.post('/api/queue/:id/approve', (req, res) => {
+	const db = getDb()
+	const eventId = parseInt(req.params.id)
 
-		const eventIndex = queue.findIndex(
-			event => event.id === parseInt(req.params.id)
-		)
-		if (eventIndex === -1) {
-			return res.status(404).json({ error: 'Событие не найдено в очереди' })
+	// Получаем событие из очереди
+	db.get(`SELECT * FROM queue WHERE id = ?`, [eventId], (err, row) => {
+		if (err) {
+			console.error('Ошибка получения события:', err)
+			res.status(500).json({ error: 'Ошибка при одобрении события' })
+			db.close()
+			return
 		}
 
-		const event = queue[eventIndex]
-		event.status = 'approved'
-		events.push(event)
+		if (!row) {
+			res.status(404).json({ error: 'Событие не найдено в очереди' })
+			db.close()
+			return
+		}
 
-		queue.splice(eventIndex, 1)
+		// Добавляем в основную таблицу
+		db.run(
+			`INSERT INTO events (name, type, start, end, description, x, y, x1, y1, x2, y2, isLine, status, createdAt)
+			 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'approved', ?)`,
+			[
+				row.name,
+				row.type,
+				row.start,
+				row.end,
+				row.description,
+				row.x,
+				row.y,
+				row.x1,
+				row.y1,
+				row.x2,
+				row.y2,
+				row.isLine,
+				row.createdAt,
+			],
+			function (insertErr) {
+				if (insertErr) {
+					console.error('Ошибка добавления события:', insertErr)
+					res.status(500).json({ error: 'Ошибка при одобрении события' })
+					db.close()
+					return
+				}
 
-		await writeQueue(queue)
-		await writeEvents(events)
+				// Удаляем из очереди
+				db.run(`DELETE FROM queue WHERE id = ?`, [eventId], deleteErr => {
+					if (deleteErr) {
+						console.error('Ошибка удаления из очереди:', deleteErr)
+					}
 
-		res.json({ message: 'Событие одобрено', event })
-	} catch (error) {
-		res.status(500).json({ error: 'Ошибка при одобрении события' })
-	}
+					res.json({
+						message: 'Событие одобрено',
+						event: { ...row, id: this.lastID, status: 'approved' },
+					})
+					db.close()
+				})
+			}
+		)
+	})
 })
 
 // Отклонение события из очереди
-app.post('/api/queue/:id/reject', async (req, res) => {
-	try {
-		const queue = await readQueue()
-		const eventIndex = queue.findIndex(
-			event => event.id === parseInt(req.params.id)
-		)
+app.post('/api/queue/:id/reject', (req, res) => {
+	const db = getDb()
+	const eventId = parseInt(req.params.id)
+	const reason = req.body.reason || 'Причина не указана'
 
-		if (eventIndex === -1) {
-			return res.status(404).json({ error: 'Событие не найдено в очереди' })
+	db.run(
+		`UPDATE queue SET status = 'rejected', rejectionReason = ? WHERE id = ?`,
+		[reason, eventId],
+		function (err) {
+			if (err) {
+				console.error('Ошибка отклонения события:', err)
+				res.status(500).json({ error: 'Ошибка при отклонении события' })
+				db.close()
+				return
+			}
+
+			if (this.changes === 0) {
+				res.status(404).json({ error: 'Событие не найдено в очереди' })
+				db.close()
+				return
+			}
+
+			// Удаляем отклоненное событие из очереди
+			db.run(`DELETE FROM queue WHERE id = ?`, [eventId], deleteErr => {
+				if (deleteErr) {
+					console.error('Ошибка удаления отклоненного события:', deleteErr)
+				}
+				res.json({ message: 'Событие отклонено' })
+				db.close()
+			})
 		}
-
-		const event = queue[eventIndex]
-		event.status = 'rejected'
-		event.rejectionReason = req.body.reason || 'Причина не указана'
-
-		queue.splice(eventIndex, 1)
-		await writeQueue(queue)
-
-		res.json({ message: 'Событие отклонено', event })
-	} catch (error) {
-		res.status(500).json({ error: 'Ошибка при отклонении события' })
-	}
+	)
 })
 
-app.put('/api/events/:id', async (req, res) => {
-	try {
-		const events = await readEvents()
-		const index = events.findIndex(
-			event => event.id === parseInt(req.params.id)
-		)
-		if (index === -1) {
-			return res.status(404).json({ error: 'Мероприятие не найдено' })
+// Обновление мероприятия
+app.put('/api/events/:id', (req, res) => {
+	const db = getDb()
+	const { name, type, start, end, description, x, y, x1, y1, x2, y2, isLine } =
+		req.body
+
+	db.run(
+		`UPDATE events 
+		 SET name = ?, type = ?, start = ?, end = ?, description = ?, 
+		     x = ?, y = ?, x1 = ?, y1 = ?, x2 = ?, y2 = ?, isLine = ?
+		 WHERE id = ?`,
+		[
+			name,
+			type,
+			start,
+			end,
+			description,
+			x || null,
+			y || null,
+			x1 || null,
+			y1 || null,
+			x2 || null,
+			y2 || null,
+			isLine ? 1 : 0,
+			req.params.id,
+		],
+		function (err) {
+			if (err) {
+				console.error('Ошибка обновления мероприятия:', err)
+				res.status(500).json({ error: 'Ошибка при обновлении мероприятия' })
+				db.close()
+				return
+			}
+
+			if (this.changes === 0) {
+				res.status(404).json({ error: 'Мероприятие не найдено' })
+				db.close()
+				return
+			}
+
+			res.json({ message: 'Мероприятие обновлено', id: req.params.id })
+			db.close()
 		}
-		events[index] = { ...req.body, id: parseInt(req.params.id) }
-		await writeEvents(events)
-		res.json(events[index])
-	} catch (error) {
-		res.status(500).json({ error: 'Ошибка при обновлении мероприятия' })
-	}
+	)
 })
 
 // Автоматическое удаление истекших мероприятий
-async function removeExpiredEvents() {
-	try {
-		const events = await readEvents()
-		const now = new Date()
-		const activeEvents = events.filter(event => new Date(event.endTime) > now)
-		if (activeEvents.length !== events.length) {
-			await writeEvents(activeEvents)
-			console.log('Истекшие мероприятия удалены')
+function removeExpiredEvents() {
+	const db = getDb()
+	const now = new Date().toISOString()
+
+	db.run(`DELETE FROM events WHERE end < ?`, [now], function (err) {
+		if (err) {
+			console.error('Ошибка удаления истекших мероприятий:', err)
+		} else if (this.changes > 0) {
+			console.log(`Удалено истекших мероприятий: ${this.changes}`)
 		}
-	} catch (error) {
-		console.error('Ошибка при удалении истекших мероприятий:', error)
-	}
+		db.close()
+	})
 }
 
 // Запуск очистки каждые 5 минут и в 4:00 МСК
 function scheduleDailyCleanup() {
 	const now = new Date()
-	const mskOffset = 3 // МСК = UTC+3
-	const targetHour = 4 // 4:00
+	const mskOffset = 3
+	const targetHour = 4
 
-	// Вычисляем время до следующей очистки
 	const mskHour = (now.getUTCHours() + mskOffset) % 24
 	const mskMinutes = now.getUTCMinutes()
 
@@ -250,16 +429,19 @@ function scheduleDailyCleanup() {
 
 // Запуск сервера
 async function startServer() {
-	await initDatabase()
+	try {
+		await initDatabase()
 
-	// ИЗМЕНИТЕ ЭТУ СЕКЦИЮ:
-	app.listen(PORT, '0.0.0.0', () => {
-		// <-- Добавлена привязка к '0.0.0.0'
-		console.log(`Сервер запущен на порту ${PORT}`)
-		// Запускаем периодическую очистку
-		setInterval(removeExpiredEvents, 5 * 60 * 1000) // Каждые 5 минут
-		scheduleDailyCleanup() // Планируем ежедневную очистку в 4:00 МСК
-	})
+		app.listen(PORT, '0.0.0.0', () => {
+			console.log(`Сервер запущен на порту ${PORT}`)
+			// Запускаем периодическую очистку
+			setInterval(removeExpiredEvents, 5 * 60 * 1000) // Каждые 5 минут
+			scheduleDailyCleanup() // Планируем ежедневную очистку в 4:00 МСК
+		})
+	} catch (error) {
+		console.error('Ошибка запуска сервера:', error)
+		process.exit(1)
+	}
 }
 
-startServer().catch(console.error)
+startServer()
