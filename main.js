@@ -1,3 +1,4 @@
+@@ -1,882 +1,902 @@
 // Инициализация базы данных
 const db = new EventDatabase()
 
@@ -58,32 +59,22 @@ window.addEventListener('load', async () => {
 // Загрузка событий
 async function loadEvents() {
 	try {
-		// Загружаем события
-		const events = await db.getAllEvents()
-		
-		// Фильтруем только одобренные события
-		const approvedEvents = events.filter(e => e.status === 'approved')
-
-		// Сохраняем данные для отслеживания изменений
-		if (!window.lastEventsData) {
-			window.lastEventsData = JSON.stringify(approvedEvents)
-		}
-
-		// Очищаем только маркеры, не трогаем линии
+		// Очищаем все элементы событий (маркеры и линии)
 		const markerContainer = document.getElementById('markerContainer')
 		
-		// Удаляем только одобренные маркеры/линии, сохраняем остальные
-		const existingMarkers = markerContainer.querySelectorAll('[data-event-id]')
-		existingMarkers.forEach(marker => {
-			const eventId = marker.dataset.eventId
-			const eventExists = approvedEvents.some(e => e.id === eventId)
-			if (eventExists) {
-				marker.remove()
-			}
-		})
+		// Удаляем все дочерние элементы, включая маркеры и линии
+		while (markerContainer.firstChild) {
+			markerContainer.removeChild(markerContainer.firstChild)
+		}
+
+		// Загружаем события
+		const events = await db.getAllEvents()
+
+		// Сохраняем данные для отслеживания изменений
+		window.lastEventsData = JSON.stringify(events)
 
 		// Создаем маркеры для каждого события
-		approvedEvents.forEach(event => {
+		events.forEach(event => {
 			if (event.isLine) {
 				createLineElement(event)
 			} else {
@@ -132,7 +123,7 @@ function createEventMarker(event) {
 
 // Создание линии
 function createLineElement(event) {
-	// Проверяем, существует ли уже элемент для этой линии
+	// Проверяем, существует ли уже элемент для этой линии и удаляем его
 	const existingLine = document.querySelector(`[data-event-id="${event.id}"]`)
 	if (existingLine) {
 		existingLine.remove()
@@ -822,25 +813,14 @@ async function approveEvent(id) {
 	if (!confirm('Вы уверены, что хотите одобрить это событие?')) return
 
 	try {
-		// 1. Одобряем событие в базе данных
 		await db.approveEvent(id)
-
-		// 2. Принудительно загружаем все события из БД
-		const updatedEvents = await db.getAllEvents()
-
-		// 3. Обновляем глобальный отслеживаемый объект данных
-		window.lastEventsData = JSON.stringify(
-			updatedEvents.filter(e => e.status === 'approved')
-		)
-
-		// 4. Перезагружаем события на карте
-		await loadEvents()
-
-		// 5. Обновляем очередь в админ-панели
 		await loadQueuedEvents()
+		await loadEvents() // Refresh all events on the map
 
-		console.log(
-			'Событие одобрено и все пользователи должны увидеть обновление.'
+		// Принудительно обновляем данные для отслеживания изменений
+		const events = await db.getAllEvents()
+		window.lastEventsData = JSON.stringify(
+			events.filter(e => e.status === 'approved')
 		)
 	} catch (error) {
 		console.error('Ошибка при одобрении события:', error)
@@ -893,7 +873,7 @@ function showLiveNewsNotification() {
 let pollInterval = null
 
 function startAutoRefresh() {
-	// Проверяем обновления каждые 5 секунд для более быстрой реакции
+	// Проверяем обновления каждые 10 секунд
 	if (pollInterval) clearInterval(pollInterval)
 	pollInterval = setInterval(async () => {
 		try {
@@ -904,14 +884,13 @@ function startAutoRefresh() {
 
 			// Проверяем, изменились ли данные
 			if (window.lastEventsData !== currentEventsData) {
-				window.lastEventsData = currentEventsData // Обновляем данные до загрузки
 				await loadEvents()
 				console.log('Events updated automatically')
 			}
 		} catch (error) {
 			console.error('Error checking for updates:', error)
 		}
-	}, 5000) // 5 секунд для более быстрой реакции на изменения
+	}, 10000) // 10 секунд
 }
 
 function stopAutoRefresh() {
