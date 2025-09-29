@@ -58,24 +58,26 @@ window.addEventListener('load', async () => {
 // Загрузка событий
 async function loadEvents() {
 	try {
-		const events = await db.getAllEvents()
+		// Очищаем только маркеры, не трогаем линии
+		const markerContainer = document.getElementById('markerContainer')
 		markerContainer.innerHTML = ''
-		events
-			.filter(e => e.status === 'approved')
-			.forEach(event => {
-				if (event.isLine) {
-					createLineElement(event)
-				} else {
-					createEventMarker(event)
-				}
-			})
 
-		// Сохраняем текущие события для отслеживания изменений
-		window.lastEventsData = JSON.stringify(
-			events.filter(e => e.status === 'approved')
-		)
+		// Загружаем события
+		const events = await db.getAllEvents()
+
+		// Сохраняем данные для отслеживания изменений
+		window.lastEventsData = JSON.stringify(events)
+
+		// Создаем маркеры для каждого события
+		events.forEach(event => {
+			if (event.isLine) {
+				createLineElement(event)
+			} else {
+				createEventMarker(event)
+			}
+		})
 	} catch (error) {
-		console.error('Ошибка загрузки мероприятий:', error)
+		console.error('Ошибка при загрузке мероприятий:', error)
 	}
 }
 
@@ -806,10 +808,9 @@ async function approveEvent(id) {
 	if (!confirm('Вы уверены, что хотите одобрить это событие?')) return
 
 	try {
-		const event = await db.approveEvent(id)
+		await db.approveEvent(id)
 		await loadQueuedEvents()
 		await loadEvents() // Refresh all events on the map
-		await loadAdminEvents() // Added admin panel refresh
 
 		// Принудительно обновляем данные для отслеживания изменений
 		const events = await db.getAllEvents()
