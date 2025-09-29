@@ -246,13 +246,12 @@ function scheduleDailyCleanup() {
 		scheduleDailyCleanup()
 	}, timeToNextCleanup)
 }
-
 // Запуск сервера
 async function startServer() {
 	await initDatabase()
-	app.listen(PORT, () => {
+	app.listen(PORT, '0.0.0.0', () => {
+		// Добавлено '0.0.0.0'
 		console.log(`Сервер запущен на порту ${PORT}`)
-		// Запускаем периодическую очистку
 		setInterval(removeExpiredEvents, 5 * 60 * 1000) // Каждые 5 минут
 		scheduleDailyCleanup() // Планируем ежедневную очистку в 4:00 МСК
 	})
