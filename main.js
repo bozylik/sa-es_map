@@ -1,4 +1,3 @@
-@@ -1,882 +1,902 @@
 // Инициализация базы данных
 const db = new EventDatabase()
 
@@ -61,7 +60,7 @@ async function loadEvents() {
 	try {
 		// Очищаем все элементы событий (маркеры и линии)
 		const markerContainer = document.getElementById('markerContainer')
-		
+
 		// Удаляем все дочерние элементы, включая маркеры и линии
 		while (markerContainer.firstChild) {
 			markerContainer.removeChild(markerContainer.firstChild)
