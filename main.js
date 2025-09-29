@@ -453,6 +453,24 @@ function closeEventModal() {
 	}
 }
 
+function closeEventForm() {
+	eventForm.classList.remove('active')
+	eventForm.innerHTML = ''
+
+	// Возобновляем автоматическое обновление
+	startAutoRefresh()
+}
+
+function closeEventDetailsModal() {
+	const modal = document.getElementById('eventDetailsModal')
+	if (modal) {
+		modal.style.display = 'none'
+	}
+
+	// Возобновляем автоматическое обновление
+	startAutoRefresh()
+}
+
 // Новое модальное окно для линий
 function openLineModal() {
 	// Используем существующее модальное окно, но добавим скрытое поле для типа
@@ -510,8 +528,8 @@ function showEventDetails(event) {
 	modal.style.display = 'flex'
 }
 
-function closeEventDetailsModal() {
-	eventDetailsModal.classList.remove('active')
+function closeAdminPanel() {
+	document.getElementById('adminPanelModal').style.display = 'none'
 
 	// Возобновляем автоматическое обновление
 	startAutoRefresh()
@@ -666,13 +684,6 @@ async function openAdminPanel() {
 	}
 }
 
-function closeAdminPanel() {
-	document.getElementById('adminPanelModal').style.display = 'none'
-
-	// Возобновляем автоматическое обновление
-	startAutoRefresh()
-}
-
 async function loadAdminEvents() {
 	try {
 		const allEvents = await db.getAllEvents()
@@ -711,6 +722,9 @@ async function deleteEvent(eventId) {
 
 	try {
 		await db.deleteEvent(eventId)
+		// Удаляем маркер с карты
+		const marker = document.querySelector(`[data-event-id="${eventId}"]`)
+		if (marker) marker.remove()
 		await loadAdminEvents()
 		await loadEvents()
 

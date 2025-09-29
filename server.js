@@ -394,7 +394,7 @@ function removeExpiredEvents() {
 	const db = getDb()
 	const now = new Date().toISOString()
 
-	db.run(`DELETE FROM events WHERE end < ?`, [now], function (err) {
+	db.run(`DELETE FROM events WHERE end < ? AND status = 'approved'`, [now], function (err) {
 		if (err) {
 			console.error('Ошибка удаления истекших мероприятий:', err)
 		} else if (this.changes > 0) {
