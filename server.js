@@ -18,11 +18,6 @@ app.get('/', (req, res) => {
 	res.sendFile(path.join(__dirname, 'index.html'))
 })
 
-// Маршрут для мобильной версии
-app.get('/mobile', (req, res) => {
-	res.sendFile(path.join(__dirname, 'mobile.html'))
-})
-
 // Инициализация базы данных SQLite
 function initDatabase() {
 	return new Promise((resolve, reject) => {
@@ -106,7 +101,7 @@ app.get('/api/events/ping', (req, res) => {
 	res.json({ status: 'ok' })
 })
 
-// Получение всех мероприятий
+// Получение всех одобренных мероприятий
 app.get('/api/events', (req, res) => {
 	const db = getDb()
 	db.all(
@@ -119,12 +114,11 @@ app.get('/api/events', (req, res) => {
 				db.close()
 				return
 			}
-
+			// Преобразуем isLine из INTEGER в boolean
 			const events = rows.map(row => ({
 				...row,
 				isLine: Boolean(row.isLine),
 			}))
-
 			res.json(events)
 			db.close()
 		}
@@ -146,12 +140,10 @@ app.get('/api/events/type/:type', (req, res) => {
 				db.close()
 				return
 			}
-
 			const events = rows.map(row => ({
 				...row,
 				isLine: Boolean(row.isLine),
 			}))
-
 			res.json(events)
 			db.close()
 		}
@@ -273,27 +265,24 @@ app.post('/api/queue/:id/approve', (req, res) => {
 		}
 
 		// Добавляем в основную таблицу
-		const eventFields = [
-			row.name,
-			row.type,
-			row.start,
-			row.end,
-			row.description,
-			row.x,
-			row.y,
-			row.x1,
-			row.y1,
-			row.x2,
-			row.y2,
-			row.isLine,
-			'approved', // status
-			row.createdAt,
-		]
-
 		db.run(
 			`INSERT INTO events (name, type, start, end, description, x, y, x1, y1, x2, y2, isLine, status, createdAt)
-			 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-			eventFields,
+			 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'approved', ?)`,
+			[
+				row.name,
+				row.type,
+				row.start,
+				row.end,
+				row.description,
+				row.x,
+				row.y,
+				row.x1,
+				row.y1,
+				row.x2,
+				row.y2,
+				row.isLine,
+				row.createdAt,
+			],
 			function (insertErr) {
 				if (insertErr) {
 					console.error('Ошибка добавления события:', insertErr)
@@ -308,16 +297,9 @@ app.post('/api/queue/:id/approve', (req, res) => {
 						console.error('Ошибка удаления из очереди:', deleteErr)
 					}
 
-					// Возвращаем одобренное событие с правильным ID
-					const approvedEvent = {
-						...row,
-						id: this.lastID, // Используем ID из вставленной записи
-						status: 'approved',
-					}
-
 					res.json({
 						message: 'Событие одобрено',
-						event: approvedEvent,
+						event: { ...row, id: this.lastID, status: 'approved' },
 					})
 					db.close()
 				})
@@ -412,18 +394,14 @@ function removeExpiredEvents() {
 	const db = getDb()
 	const now = new Date().toISOString()
 
-	db.run(
-		`DELETE FROM events WHERE end < ? AND status = 'approved'`,
-		[now],
-		function (err) {
-			if (err) {
-				console.error('Ошибка удаления истекших мероприятий:', err)
-			} else if (this.changes > 0) {
-				console.log(`Удалено истекших мероприятий: ${this.changes}`)
-			}
-			db.close()
+	db.run(`DELETE FROM events WHERE end < ?`, [now], function (err) {
+		if (err) {
+			console.error('Ошибка удаления истекших мероприятий:', err)
+		} else if (this.changes > 0) {
+			console.log(`Удалено истекших мероприятий: ${this.changes}`)
 		}
-	)
+		db.close()
+	})
 }
 
 // Запуск очистки каждые 5 минут и в 4:00 МСК

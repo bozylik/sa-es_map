@@ -454,7 +454,7 @@ body {
 	top: 10px;
 	right: 10px;
 	padding: 12px;
-	background: #ffd700; /* Жёлтый цвет фона */
+	background: rgba(255, 255, 255, 0.8);
 	border: none;
 	border-radius: 50%;
 	cursor: pointer;
@@ -465,46 +465,14 @@ body {
 	align-items: center;
 	justify-content: center;
 	box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2);
-	transition: all 0.3s ease;
 }
 
 .tool-button:hover {
-	background: #ffc107; /* Более тёмный оттенок жёлтого при наведении */
-	transform: scale(1.1);
+	background: rgba(255, 255, 255, 1);
 }
 
 .tool-button.active {
-	background: #4caf50; /* Зелёный цвет при активации */
-	color: white;
-}
-
-.draw-line-button {
-	background: #ffd700; /* Жёлтый цвет фона */
-	color: white;
-	border: none;
-	padding: 12px;
-	border-radius: 50%;
-	cursor: pointer;
-	font-size: 18px;
-	width: 50px;
-	height: 50px;
-	display: flex;
-	align-items: center;
-	justify-content: center;
-	box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2);
-	transition: all 0.3s ease;
-	z-index: 1000;
-}
-
-.draw-line-button:hover {
-	background: #ffc107; /* Более тёмный оттенок жёлтого при наведении */
-	transform: scale(1.1);
-}
-
-.draw-line-button.active {
-	background: #ffa000; /* Ещё более тёмный оттенок жёлтого когда активна */
-	box-shadow: 0 0 10px rgba(255, 215, 0, 0.5);
-	color: white;
+	background: #4caf50;
 }
 
 .temp-line {
@@ -527,29 +495,29 @@ body {
 /* Styles for admin panel lists */
 .admin-events-list,
 .queue-events-list {
-	max-height: calc(50vh - 60px); /* Updated to adaptive height */
-	overflow-y: auto;
-	margin: 10px 0;
-	background: #fff;
-	border-radius: 8px; /* Increased border radius */
-	padding: 15px; /* Added padding */
-	box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1); /* Added shadow */
+    max-height: calc(50vh - 60px); /* Updated to adaptive height */
+    overflow-y: auto;
+    margin: 10px 0;
+    background: #fff;
+    border-radius: 8px; /* Increased border radius */
+    padding: 15px; /* Added padding */
+    box-shadow: 0 4px 6px rgba(0,0,0,0.1); /* Added shadow */
 }
 
 /* Enhanced scrollbar styling for Webkit browsers */
 &::-webkit-scrollbar {
-	width: 10px;
+    width: 10px;
 }
 
 &::-webkit-scrollbar-thumb {
-	background-color: #b3b3b3;
-	border-radius: 5px;
-	border: 2px solid #fff; /* Added border */
+    background-color: #b3b3b3;
+    border-radius: 5px;
+    border: 2px solid #fff; /* Added border */
 }
 
 &::-webkit-scrollbar-track {
-	background-color: #f0f0f0;
-	border-radius: 5px;
+    background-color: #f0f0f0;
+    border-radius: 5px;
 }
 
 /* Existing Firefox scrollbar styles remain unchanged */
