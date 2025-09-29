@@ -69,6 +69,11 @@ async function loadEvents() {
 					createEventMarker(event)
 				}
 			})
+
+		// Сохраняем текущие события для отслеживания изменений
+		window.lastEventsData = JSON.stringify(
+			events.filter(e => e.status === 'approved')
+		)
 	} catch (error) {
 		console.error('Ошибка загрузки мероприятий:', error)
 	}
@@ -506,7 +511,10 @@ function showEventDetails(event) {
 }
 
 function closeEventDetailsModal() {
-	document.getElementById('eventDetailsModal').style.display = 'none'
+	eventDetailsModal.classList.remove('active')
+
+	// Возобновляем автоматическое обновление
+	startAutoRefresh()
 }
 
 // ==================== ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ====================
@@ -572,6 +580,12 @@ async function createRegularEvent() {
 		const result = await db.addEvent(eventData)
 		closeEventModal()
 		alert(result.message || 'Событие добавлено в очередь на одобрение')
+
+		// Обновляем данные для отслеживания изменений
+		const events = await db.getAllEvents()
+		window.lastEventsData = JSON.stringify(
+			events.filter(e => e.status === 'approved')
+		)
 	} catch (error) {
 		console.error('Ошибка при создании мероприятия:', error)
 		alert('Не удалось создать мероприятие')
@@ -600,6 +614,12 @@ async function createLineEvent() {
 		const result = await db.addEvent(eventData)
 		closeLineModal()
 		alert(result.message || 'Линия добавлена в очередь на одобрение')
+
+		// Обновляем данные для отслеживания изменений
+		const events = await db.getAllEvents()
+		window.lastEventsData = JSON.stringify(
+			events.filter(e => e.status === 'approved')
+		)
 	} catch (error) {
 		console.error('Ошибка при создании линии:', error)
 		alert('Не удалось создать линию')
@@ -648,6 +668,9 @@ async function openAdminPanel() {
 
 function closeAdminPanel() {
 	document.getElementById('adminPanelModal').style.display = 'none'
+
+	// Возобновляем автоматическое обновление
+	startAutoRefresh()
 }
 
 async function loadAdminEvents() {
@@ -688,10 +711,14 @@ async function deleteEvent(eventId) {
 
 	try {
 		await db.deleteEvent(eventId)
-		const marker = document.querySelector(`[data-event-id="${eventId}"]`)
-		if (marker) marker.remove()
 		await loadAdminEvents()
 		await loadEvents()
+
+		// Принудительно обновляем данные для отслеживания изменений
+		const events = await db.getAllEvents()
+		window.lastEventsData = JSON.stringify(
+			events.filter(e => e.status === 'approved')
+		)
 	} catch (error) {
 		console.error('Ошибка при удалении мероприятия:', error)
 		alert('Не удалось удалить мероприятие')
@@ -768,6 +795,13 @@ async function approveEvent(id) {
 		const event = await db.approveEvent(id)
 		await loadQueuedEvents()
 		await loadEvents() // Refresh all events on the map
+		await loadAdminEvents() // Added admin panel refresh
+
+		// Принудительно обновляем данные для отслеживания изменений
+		const events = await db.getAllEvents()
+		window.lastEventsData = JSON.stringify(
+			events.filter(e => e.status === 'approved')
+		)
 	} catch (error) {
 		console.error('Ошибка при одобрении события:', error)
 		alert('Не удалось одобрить событие')
@@ -794,3 +828,40 @@ async function rejectEvent(id) {
 function showLiveNewsNotification() {
 	alert('Функция в разработке')
 }
+
+// Добавляем функцию для автоматического обновления
+let pollInterval = null
+
+function startAutoRefresh() {
+	// Проверяем обновления каждые 10 секунд
+	if (pollInterval) clearInterval(pollInterval)
+	pollInterval = setInterval(async () => {
+		try {
+			const events = await db.getAllEvents()
+			const currentEventsData = JSON.stringify(
+				events.filter(e => e.status === 'approved')
+			)
+
+			// Проверяем, изменились ли данные
+			if (window.lastEventsData !== currentEventsData) {
+				await loadEvents()
+				console.log('Events updated automatically')
+			}
+		} catch (error) {
+			console.error('Error checking for updates:', error)
+		}
+	}, 10000) // 10 секунд
+}
+
+function stopAutoRefresh() {
+	if (pollInterval) {
+		clearInterval(pollInterval)
+		pollInterval = null
+	}
+}
+
+// Начинаем автоматическое обновление при загрузке страницы
+document.addEventListener('DOMContentLoaded', () => {
+	loadEvents()
+	startAutoRefresh()
+})
