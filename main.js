@@ -36,11 +36,25 @@ let lineStartPoint = null
 let lineEndPoint = null
 let tempLine = null
 
-// Инициализация
+// Переменные для автообновления
+let pollInterval = null
+
+// Инициализация - ЕДИНАЯ ТОЧКА ВХОДА
 window.addEventListener('load', async () => {
 	try {
 		await db.init()
 		await loadEvents()
+
+		// Запускаем автоматическое обновление
+		startAutoRefresh()
+
+		// Проверка на мобильное устройство
+		if (isMobileDevice()) {
+			window.location.href = 'mobile.html'
+			return
+		}
+
+		// Удаление истекших событий каждую минуту
 		setInterval(removeExpiredEvents, 60000)
 
 		// Добавляем обработчики для кнопок
@@ -66,14 +80,15 @@ async function loadEvents() {
 			markerContainer.removeChild(markerContainer.firstChild)
 		}
 
-		// Загружаем события
+		// Загружаем ТОЛЬКО одобренные события
 		const events = await db.getAllEvents()
+		const approvedEvents = events.filter(e => e.status === 'approved')
 
 		// Сохраняем данные для отслеживания изменений
-		window.lastEventsData = JSON.stringify(events)
+		window.lastEventsData = JSON.stringify(approvedEvents)
 
 		// Создаем маркеры для каждого события
-		events.forEach(event => {
+		approvedEvents.forEach(event => {
 			if (event.isLine) {
 				createLineElement(event)
 			} else {
@@ -94,10 +109,11 @@ async function removeExpiredEvents() {
 		for (const event of events) {
 			if (new Date(event.end).getTime() < currentTime) {
 				await db.deleteEvent(event.id)
-				const marker = document.querySelector(`[data-event-id="${event.id}"]`)
-				if (marker) marker.remove()
 			}
 		}
+
+		// Перезагружаем события после удаления истекших
+		await loadEvents()
 	} catch (error) {
 		console.error('Ошибка при удалении истекших мероприятий:', error)
 	}
@@ -122,12 +138,6 @@ function createEventMarker(event) {
 
 // Создание линии
 function createLineElement(event) {
-	// Проверяем, существует ли уже элемент для этой линии и удаляем его
-	const existingLine = document.querySelector(`[data-event-id="${event.id}"]`)
-	if (existingLine) {
-		existingLine.remove()
-	}
-
 	const lineContainer = document.createElement('div')
 	lineContainer.className = 'event-line'
 	lineContainer.style.position = 'absolute'
@@ -211,7 +221,7 @@ function updateMarkersTransform() {
 	applyTransform()
 }
 
-// ==================== НОВАЯ СИСТЕМА ЗУМА ====================
+// ==================== СИСТЕМА ЗУМА ====================
 
 container.addEventListener(
 	'wheel',
@@ -459,22 +469,11 @@ function closeEventModal() {
 	}
 }
 
-function closeEventForm() {
-	eventForm.classList.remove('active')
-	eventForm.innerHTML = ''
-
-	// Возобновляем автоматическое обновление
-	startAutoRefresh()
-}
-
 function closeEventDetailsModal() {
 	const modal = document.getElementById('eventDetailsModal')
 	if (modal) {
 		modal.style.display = 'none'
 	}
-
-	// Возобновляем автоматическое обновление
-	startAutoRefresh()
 }
 
 // Новое модальное окно для линий
@@ -536,9 +535,6 @@ function showEventDetails(event) {
 
 function closeAdminPanel() {
 	document.getElementById('adminPanelModal').style.display = 'none'
-
-	// Возобновляем автоматическое обновление
-	startAutoRefresh()
 }
 
 // ==================== ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ====================
@@ -605,11 +601,8 @@ async function createRegularEvent() {
 		closeEventModal()
 		alert(result.message || 'Событие добавлено в очередь на одобрение')
 
-		// Обновляем данные для отслеживания изменений
-		const events = await db.getAllEvents()
-		window.lastEventsData = JSON.stringify(
-			events.filter(e => e.status === 'approved')
-		)
+		// Обновляем события на карте
+		await loadEvents()
 	} catch (error) {
 		console.error('Ошибка при создании мероприятия:', error)
 		alert('Не удалось создать мероприятие')
@@ -639,11 +632,8 @@ async function createLineEvent() {
 		closeLineModal()
 		alert(result.message || 'Линия добавлена в очередь на одобрение')
 
-		// Обновляем данные для отслеживания изменений
-		const events = await db.getAllEvents()
-		window.lastEventsData = JSON.stringify(
-			events.filter(e => e.status === 'approved')
-		)
+		// Обновляем события на карте
+		await loadEvents()
 	} catch (error) {
 		console.error('Ошибка при создании линии:', error)
 		alert('Не удалось создать линию')
@@ -728,17 +718,8 @@ async function deleteEvent(eventId) {
 
 	try {
 		await db.deleteEvent(eventId)
-		// Удаляем маркер с карты
-		const marker = document.querySelector(`[data-event-id="${eventId}"]`)
-		if (marker) marker.remove()
 		await loadAdminEvents()
 		await loadEvents()
-
-		// Принудительно обновляем данные для отслеживания изменений
-		const events = await db.getAllEvents()
-		window.lastEventsData = JSON.stringify(
-			events.filter(e => e.status === 'approved')
-		)
 	} catch (error) {
 		console.error('Ошибка при удалении мероприятия:', error)
 		alert('Не удалось удалить мероприятие')
@@ -814,13 +795,7 @@ async function approveEvent(id) {
 	try {
 		await db.approveEvent(id)
 		await loadQueuedEvents()
-		await loadEvents() // Refresh all events on the map
-
-		// Принудительно обновляем данные для отслеживания изменений
-		const events = await db.getAllEvents()
-		window.lastEventsData = JSON.stringify(
-			events.filter(e => e.status === 'approved')
-		)
+		await loadEvents()
 	} catch (error) {
 		console.error('Ошибка при одобрении события:', error)
 		alert('Не удалось одобрить событие')
@@ -850,44 +825,30 @@ function isMobileDevice() {
 	)
 }
 
-// Проверка мобильного устройства при загрузке страницы
-document.addEventListener('DOMContentLoaded', () => {
-	if (isMobileDevice()) {
-		// Перенаправляем на мобильную страницу
-		window.location.href = 'mobile.html'
-		return
-	}
-
-	// Существующая логика для десктопа
-	loadEvents()
-	startAutoRefresh()
-})
-
 // Функция для отображения уведомления о том, что функция находится в разработке
 function showLiveNewsNotification() {
 	alert('Функция в разработке')
 }
 
-// Добавляем функцию для автоматического обновления
-let pollInterval = null
+// ==================== АВТОМАТИЧЕСКОЕ ОБНОВЛЕНИЕ ====================
 
 function startAutoRefresh() {
 	// Проверяем обновления каждые 10 секунд
 	if (pollInterval) clearInterval(pollInterval)
+
 	pollInterval = setInterval(async () => {
 		try {
 			const events = await db.getAllEvents()
-			const currentEventsData = JSON.stringify(
-				events.filter(e => e.status === 'approved')
-			)
+			const approvedEvents = events.filter(e => e.status === 'approved')
+			const currentEventsData = JSON.stringify(approvedEvents)
 
 			// Проверяем, изменились ли данные
 			if (window.lastEventsData !== currentEventsData) {
 				await loadEvents()
-				console.log('Events updated automatically')
+				console.log('События обновлены автоматически')
 			}
 		} catch (error) {
-			console.error('Error checking for updates:', error)
+			console.error('Ошибка при проверке обновлений:', error)
 		}
 	}, 10000) // 10 секунд
 }
@@ -899,7 +860,6 @@ function stopAutoRefresh() {
 	}
 }
 
-// Начинаем автоматическое обновление при загрузке страницы
 document.addEventListener('DOMContentLoaded', () => {
 	loadEvents()
 	startAutoRefresh()

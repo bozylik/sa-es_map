@@ -57,6 +57,7 @@ function initDatabase() {
 			err => {
 				if (err) {
 					console.error('Ошибка создания таблицы events:', err)
+					db.close()
 					reject(err)
 					return
 				}
@@ -86,266 +87,404 @@ function initDatabase() {
 			err => {
 				if (err) {
 					console.error('Ошибка создания таблицы queue:', err)
+					db.close()
 					reject(err)
 					return
 				}
 				console.log('Таблицы созданы успешно')
-				resolve(db)
+				db.close()
+				resolve()
 			}
 		)
 	})
 }
 
-// Получение подключения к БД
+// Получение подключения к БД с обработкой ошибок
 function getDb() {
-	return new sqlite3.Database(DB_PATH)
+	return new Promise((resolve, reject) => {
+		const db = new sqlite3.Database(DB_PATH, err => {
+			if (err) {
+				console.error('Ошибка подключения к БД:', err)
+				reject(err)
+			} else {
+				resolve(db)
+			}
+		})
+	})
+}
+
+// Утилита для безопасного закрытия БД
+function closeDb(db) {
+	if (db) {
+		db.close(err => {
+			if (err) {
+				console.error('Ошибка закрытия БД:', err)
+			}
+		})
+	}
+}
+
+// Валидация данных события
+function validateEventData(data) {
+	const { name, type, start, end } = data
+	const errors = []
+
+	if (!name || name.trim().length === 0) {
+		errors.push('Название события обязательно')
+	}
+	if (!type || !['government', 'civilian', 'incident'].includes(type)) {
+		errors.push('Некорректный тип события')
+	}
+	if (!start || isNaN(Date.parse(start))) {
+		errors.push('Некорректная дата начала')
+	}
+	if (!end || isNaN(Date.parse(end))) {
+		errors.push('Некорректная дата окончания')
+	}
+	if (start && end && new Date(start) >= new Date(end)) {
+		errors.push('Дата начала должна быть раньше даты окончания')
+	}
+
+	return errors
 }
 
 // Проверка подключения
 app.get('/api/events/ping', (req, res) => {
-	res.json({ status: 'ok' })
+	res.json({ status: 'ok', timestamp: new Date().toISOString() })
 })
 
-// Получение всех мероприятий
-app.get('/api/events', (req, res) => {
-	const db = getDb()
-	db.all(
-		`SELECT * FROM events WHERE status = 'approved' ORDER BY createdAt DESC`,
-		[],
-		(err, rows) => {
-			if (err) {
-				console.error('Ошибка получения мероприятий:', err)
-				res.status(500).json({ error: 'Ошибка при получении мероприятий' })
-				db.close()
-				return
+// Получение всех одобренных мероприятий
+app.get('/api/events', async (req, res) => {
+	let db
+	try {
+		db = await getDb()
+		db.all(
+			`SELECT * FROM events WHERE status = 'approved' ORDER BY createdAt DESC`,
+			[],
+			(err, rows) => {
+				if (err) {
+					console.error('Ошибка получения мероприятий:', err)
+					res.status(500).json({ error: 'Ошибка при получении мероприятий' })
+				} else {
+					const events = rows.map(row => ({
+						...row,
+						isLine: Boolean(row.isLine),
+					}))
+					res.json(events)
+				}
+				closeDb(db)
 			}
-
-			const events = rows.map(row => ({
-				...row,
-				isLine: Boolean(row.isLine),
-			}))
-
-			res.json(events)
-			db.close()
-		}
-	)
+		)
+	} catch (error) {
+		console.error('Ошибка подключения к БД:', error)
+		res.status(500).json({ error: 'Ошибка подключения к базе данных' })
+		closeDb(db)
+	}
 })
 
 // Получение мероприятий по типу
-app.get('/api/events/type/:type', (req, res) => {
-	const db = getDb()
-	db.all(
-		`SELECT * FROM events WHERE type = ? AND status = 'approved' ORDER BY createdAt DESC`,
-		[req.params.type],
-		(err, rows) => {
-			if (err) {
-				console.error('Ошибка получения мероприятий по типу:', err)
-				res
-					.status(500)
-					.json({ error: 'Ошибка при получении мероприятий по типу' })
-				db.close()
-				return
+app.get('/api/events/type/:type', async (req, res) => {
+	const { type } = req.params
+
+	// Валидация типа
+	if (!['government', 'civilian', 'incident'].includes(type)) {
+		return res.status(400).json({ error: 'Некорректный тип события' })
+	}
+
+	let db
+	try {
+		db = await getDb()
+		db.all(
+			`SELECT * FROM events WHERE type = ? AND status = 'approved' ORDER BY createdAt DESC`,
+			[type],
+			(err, rows) => {
+				if (err) {
+					console.error('Ошибка получения мероприятий по типу:', err)
+					res.status(500).json({ error: 'Ошибка при получении мероприятий' })
+				} else {
+					const events = rows.map(row => ({
+						...row,
+						isLine: Boolean(row.isLine),
+					}))
+					res.json(events)
+				}
+				closeDb(db)
 			}
-
-			const events = rows.map(row => ({
-				...row,
-				isLine: Boolean(row.isLine),
-			}))
-
-			res.json(events)
-			db.close()
-		}
-	)
+		)
+	} catch (error) {
+		console.error('Ошибка подключения к БД:', error)
+		res.status(500).json({ error: 'Ошибка подключения к базе данных' })
+		closeDb(db)
+	}
 })
 
 // Добавление нового мероприятия в очередь
-app.post('/api/events', (req, res) => {
-	const db = getDb()
+app.post('/api/events', async (req, res) => {
 	const { name, type, start, end, description, x, y, x1, y1, x2, y2, isLine } =
 		req.body
 
+	// Валидация данных
+	const validationErrors = validateEventData(req.body)
+	if (validationErrors.length > 0) {
+		return res.status(400).json({
+			error: 'Ошибка валидации',
+			details: validationErrors,
+		})
+	}
+
+	// Проверка координат
+	if (isLine) {
+		if (
+			x1 === undefined ||
+			y1 === undefined ||
+			x2 === undefined ||
+			y2 === undefined
+		) {
+			return res
+				.status(400)
+				.json({ error: 'Для линии необходимы координаты двух точек' })
+		}
+	} else {
+		if (x === undefined || y === undefined) {
+			return res
+				.status(400)
+				.json({ error: 'Для точечного события необходимы координаты' })
+		}
+	}
+
 	const createdAt = new Date().toISOString()
 
-	db.run(
-		`INSERT INTO queue (name, type, start, end, description, x, y, x1, y1, x2, y2, isLine, status, createdAt)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?)`,
-		[
-			name,
-			type,
-			start,
-			end,
-			description || '',
-			x || null,
-			y || null,
-			x1 || null,
-			y1 || null,
-			x2 || null,
-			y2 || null,
-			isLine ? 1 : 0,
-			createdAt,
-		],
-		function (err) {
-			if (err) {
-				console.error('Ошибка добавления в очередь:', err)
-				res
-					.status(500)
-					.json({ error: 'Ошибка при добавлении события в очередь' })
-				db.close()
-				return
+	let db
+	try {
+		db = await getDb()
+		db.run(
+			`INSERT INTO queue (name, type, start, end, description, x, y, x1, y1, x2, y2, isLine, status, createdAt)
+			 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?)`,
+			[
+				name.trim(),
+				type,
+				start,
+				end,
+				description?.trim() || '',
+				x || null,
+				y || null,
+				x1 || null,
+				y1 || null,
+				x2 || null,
+				y2 || null,
+				isLine ? 1 : 0,
+				createdAt,
+			],
+			function (err) {
+				if (err) {
+					console.error('Ошибка добавления в очередь:', err)
+					res
+						.status(500)
+						.json({ error: 'Ошибка при добавлении события в очередь' })
+				} else {
+					res.status(201).json({
+						message: 'Событие добавлено в очередь на одобрение',
+						event: {
+							id: this.lastID,
+							name: name.trim(),
+							type,
+							start,
+							end,
+							description: description?.trim() || '',
+							x,
+							y,
+							x1,
+							y1,
+							x2,
+							y2,
+							isLine,
+							status: 'pending',
+							createdAt,
+						},
+					})
+				}
+				closeDb(db)
 			}
-			res.status(201).json({
-				message: 'Событие добавлено в очередь на одобрение',
-				event: {
-					id: this.lastID,
-					name,
-					type,
-					start,
-					end,
-					description,
-					x,
-					y,
-					x1,
-					y1,
-					x2,
-					y2,
-					isLine,
-					status: 'pending',
-					createdAt,
-				},
-			})
-			db.close()
-		}
-	)
+		)
+	} catch (error) {
+		console.error('Ошибка подключения к БД:', error)
+		res.status(500).json({ error: 'Ошибка подключения к базе данных' })
+		closeDb(db)
+	}
 })
 
 // Удаление мероприятия
-app.delete('/api/events/:id', (req, res) => {
-	const db = getDb()
-	db.run(`DELETE FROM events WHERE id = ?`, [req.params.id], function (err) {
-		if (err) {
-			console.error('Ошибка удаления мероприятия:', err)
-			res.status(500).json({ error: 'Ошибка при удалении мероприятия' })
-			db.close()
-			return
-		}
-		res.status(200).json({ message: 'Мероприятие удалено' })
-		db.close()
-	})
+app.delete('/api/events/:id', async (req, res) => {
+	const eventId = parseInt(req.params.id)
+
+	if (isNaN(eventId)) {
+		return res.status(400).json({ error: 'Некорректный ID события' })
+	}
+
+	let db
+	try {
+		db = await getDb()
+		db.run(`DELETE FROM events WHERE id = ?`, [eventId], function (err) {
+			if (err) {
+				console.error('Ошибка удаления мероприятия:', err)
+				res.status(500).json({ error: 'Ошибка при удалении мероприятия' })
+			} else if (this.changes === 0) {
+				res.status(404).json({ error: 'Мероприятие не найдено' })
+			} else {
+				res.status(200).json({
+					message: 'Мероприятие удалено',
+					id: eventId,
+				})
+			}
+			closeDb(db)
+		})
+	} catch (error) {
+		console.error('Ошибка подключения к БД:', error)
+		res.status(500).json({ error: 'Ошибка подключения к базе данных' })
+		closeDb(db)
+	}
 })
 
 // Получение списка событий в очереди
-app.get('/api/queue', (req, res) => {
-	const db = getDb()
-	db.all(`SELECT * FROM queue ORDER BY createdAt DESC`, [], (err, rows) => {
-		if (err) {
-			console.error('Ошибка получения очереди:', err)
-			res.status(500).json({ error: 'Ошибка при получении очереди событий' })
-			db.close()
-			return
-		}
-		const queue = rows.map(row => ({
-			...row,
-			isLine: Boolean(row.isLine),
-		}))
-		res.json(queue)
-		db.close()
-	})
+app.get('/api/queue', async (req, res) => {
+	let db
+	try {
+		db = await getDb()
+		db.all(`SELECT * FROM queue ORDER BY createdAt DESC`, [], (err, rows) => {
+			if (err) {
+				console.error('Ошибка получения очереди:', err)
+				res.status(500).json({ error: 'Ошибка при получении очереди событий' })
+			} else {
+				const queue = rows.map(row => ({
+					...row,
+					isLine: Boolean(row.isLine),
+				}))
+				res.json(queue)
+			}
+			closeDb(db)
+		})
+	} catch (error) {
+		console.error('Ошибка подключения к БД:', error)
+		res.status(500).json({ error: 'Ошибка подключения к базе данных' })
+		closeDb(db)
+	}
 })
 
 // Одобрение события из очереди
-app.post('/api/queue/:id/approve', (req, res) => {
-	const db = getDb()
+app.post('/api/queue/:id/approve', async (req, res) => {
 	const eventId = parseInt(req.params.id)
 
-	// Получаем событие из очереди
-	db.get(`SELECT * FROM queue WHERE id = ?`, [eventId], (err, row) => {
-		if (err) {
-			console.error('Ошибка получения события:', err)
-			res.status(500).json({ error: 'Ошибка при одобрении события' })
-			db.close()
-			return
-		}
+	if (isNaN(eventId)) {
+		return res.status(400).json({ error: 'Некорректный ID события' })
+	}
 
-		if (!row) {
-			res.status(404).json({ error: 'Событие не найдено в очереди' })
-			db.close()
-			return
-		}
+	let db
+	try {
+		db = await getDb()
 
-		// Добавляем в основную таблицу
-		const eventFields = [
-			row.name,
-			row.type,
-			row.start,
-			row.end,
-			row.description,
-			row.x,
-			row.y,
-			row.x1,
-			row.y1,
-			row.x2,
-			row.y2,
-			row.isLine,
-			'approved', // status
-			row.createdAt,
-		]
-
-		db.run(
-			`INSERT INTO events (name, type, start, end, description, x, y, x1, y1, x2, y2, isLine, status, createdAt)
-			 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-			eventFields,
-			function (insertErr) {
-				if (insertErr) {
-					console.error('Ошибка добавления события:', insertErr)
-					res.status(500).json({ error: 'Ошибка при одобрении события' })
-					db.close()
-					return
-				}
-
-				// Удаляем из очереди
-				db.run(`DELETE FROM queue WHERE id = ?`, [eventId], deleteErr => {
-					if (deleteErr) {
-						console.error('Ошибка удаления из очереди:', deleteErr)
-					}
-
-					// Возвращаем одобренное событие с правильным ID
-					const approvedEvent = {
-						...row,
-						id: this.lastID, // Используем ID из вставленной записи
-						status: 'approved',
-					}
-
-					res.json({
-						message: 'Событие одобрено',
-						event: approvedEvent,
-					})
-					db.close()
-				})
-			}
-		)
-	})
-})
-
-// Отклонение события из очереди
-app.post('/api/queue/:id/reject', (req, res) => {
-	const db = getDb()
-	const eventId = parseInt(req.params.id)
-	const reason = req.body.reason || 'Причина не указана'
-
-	db.run(
-		`UPDATE queue SET status = 'rejected', rejectionReason = ? WHERE id = ?`,
-		[reason, eventId],
-		function (err) {
+		// Получаем событие из очереди
+		db.get(`SELECT * FROM queue WHERE id = ?`, [eventId], (err, row) => {
 			if (err) {
-				console.error('Ошибка отклонения события:', err)
-				res.status(500).json({ error: 'Ошибка при отклонении события' })
-				db.close()
+				console.error('Ошибка получения события:', err)
+				res.status(500).json({ error: 'Ошибка при одобрении события' })
+				closeDb(db)
 				return
 			}
 
-			if (this.changes === 0) {
+			if (!row) {
 				res.status(404).json({ error: 'Событие не найдено в очереди' })
-				db.close()
+				closeDb(db)
+				return
+			}
+
+			// Добавляем в основную таблицу
+			const eventFields = [
+				row.name,
+				row.type,
+				row.start,
+				row.end,
+				row.description,
+				row.x,
+				row.y,
+				row.x1,
+				row.y1,
+				row.x2,
+				row.y2,
+				row.isLine,
+				'approved',
+				row.createdAt,
+			]
+
+			db.run(
+				`INSERT INTO events (name, type, start, end, description, x, y, x1, y1, x2, y2, isLine, status, createdAt)
+				 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+				eventFields,
+				function (insertErr) {
+					if (insertErr) {
+						console.error('Ошибка добавления события:', insertErr)
+						res.status(500).json({ error: 'Ошибка при одобрении события' })
+						closeDb(db)
+						return
+					}
+
+					const newEventId = this.lastID
+
+					// Удаляем из очереди
+					db.run(`DELETE FROM queue WHERE id = ?`, [eventId], deleteErr => {
+						if (deleteErr) {
+							console.error('Ошибка удаления из очереди:', deleteErr)
+							res.status(500).json({ error: 'Ошибка при очистке очереди' })
+						} else {
+							// Возвращаем одобренное событие с новым ID
+							const approvedEvent = {
+								...row,
+								id: newEventId,
+								isLine: Boolean(row.isLine),
+								status: 'approved',
+							}
+
+							res.json({
+								message: 'Событие одобрено',
+								event: approvedEvent,
+							})
+						}
+						closeDb(db)
+					})
+				}
+			)
+		})
+	} catch (error) {
+		console.error('Ошибка подключения к БД:', error)
+		res.status(500).json({ error: 'Ошибка подключения к базе данных' })
+		closeDb(db)
+	}
+})
+
+// Отклонение события из очереди
+app.post('/api/queue/:id/reject', async (req, res) => {
+	const eventId = parseInt(req.params.id)
+	const reason = req.body.reason?.trim() || 'Причина не указана'
+
+	if (isNaN(eventId)) {
+		return res.status(400).json({ error: 'Некорректный ID события' })
+	}
+
+	let db
+	try {
+		db = await getDb()
+
+		// Сначала проверяем существование события
+		db.get(`SELECT * FROM queue WHERE id = ?`, [eventId], (err, row) => {
+			if (err) {
+				console.error('Ошибка получения события:', err)
+				res.status(500).json({ error: 'Ошибка при отклонении события' })
+				closeDb(db)
+				return
+			}
+
+			if (!row) {
+				res.status(404).json({ error: 'Событие не найдено в очереди' })
+				closeDb(db)
 				return
 			}
 
@@ -353,80 +492,117 @@ app.post('/api/queue/:id/reject', (req, res) => {
 			db.run(`DELETE FROM queue WHERE id = ?`, [eventId], deleteErr => {
 				if (deleteErr) {
 					console.error('Ошибка удаления отклоненного события:', deleteErr)
+					res.status(500).json({ error: 'Ошибка при удалении события' })
+				} else {
+					res.json({
+						message: 'Событие отклонено',
+						reason: reason,
+					})
 				}
-				res.json({ message: 'Событие отклонено' })
-				db.close()
+				closeDb(db)
 			})
-		}
-	)
+		})
+	} catch (error) {
+		console.error('Ошибка подключения к БД:', error)
+		res.status(500).json({ error: 'Ошибка подключения к базе данных' })
+		closeDb(db)
+	}
 })
 
 // Обновление мероприятия
-app.put('/api/events/:id', (req, res) => {
-	const db = getDb()
+app.put('/api/events/:id', async (req, res) => {
+	const eventId = parseInt(req.params.id)
 	const { name, type, start, end, description, x, y, x1, y1, x2, y2, isLine } =
 		req.body
 
-	db.run(
-		`UPDATE events 
-		 SET name = ?, type = ?, start = ?, end = ?, description = ?, 
-		     x = ?, y = ?, x1 = ?, y1 = ?, x2 = ?, y2 = ?, isLine = ?
-		 WHERE id = ?`,
-		[
-			name,
-			type,
-			start,
-			end,
-			description,
-			x || null,
-			y || null,
-			x1 || null,
-			y1 || null,
-			x2 || null,
-			y2 || null,
-			isLine ? 1 : 0,
-			req.params.id,
-		],
-		function (err) {
-			if (err) {
-				console.error('Ошибка обновления мероприятия:', err)
-				res.status(500).json({ error: 'Ошибка при обновлении мероприятия' })
-				db.close()
-				return
-			}
+	if (isNaN(eventId)) {
+		return res.status(400).json({ error: 'Некорректный ID события' })
+	}
 
-			if (this.changes === 0) {
-				res.status(404).json({ error: 'Мероприятие не найдено' })
-				db.close()
-				return
-			}
+	// Валидация данных
+	const validationErrors = validateEventData(req.body)
+	if (validationErrors.length > 0) {
+		return res.status(400).json({
+			error: 'Ошибка валидации',
+			details: validationErrors,
+		})
+	}
 
-			res.json({ message: 'Мероприятие обновлено', id: req.params.id })
-			db.close()
-		}
-	)
+	let db
+	try {
+		db = await getDb()
+		db.run(
+			`UPDATE events 
+			 SET name = ?, type = ?, start = ?, end = ?, description = ?, 
+			     x = ?, y = ?, x1 = ?, y1 = ?, x2 = ?, y2 = ?, isLine = ?
+			 WHERE id = ?`,
+			[
+				name.trim(),
+				type,
+				start,
+				end,
+				description?.trim() || '',
+				x || null,
+				y || null,
+				x1 || null,
+				y1 || null,
+				x2 || null,
+				y2 || null,
+				isLine ? 1 : 0,
+				eventId,
+			],
+			function (err) {
+				if (err) {
+					console.error('Ошибка обновления мероприятия:', err)
+					res.status(500).json({ error: 'Ошибка при обновлении мероприятия' })
+				} else if (this.changes === 0) {
+					res.status(404).json({ error: 'Мероприятие не найдено' })
+				} else {
+					res.json({
+						message: 'Мероприятие обновлено',
+						id: eventId,
+					})
+				}
+				closeDb(db)
+			}
+		)
+	} catch (error) {
+		console.error('Ошибка подключения к БД:', error)
+		res.status(500).json({ error: 'Ошибка подключения к базе данных' })
+		closeDb(db)
+	}
 })
 
 // Автоматическое удаление истекших мероприятий
-function removeExpiredEvents() {
-	const db = getDb()
-	const now = new Date().toISOString()
+async function removeExpiredEvents() {
+	let db
+	try {
+		db = await getDb()
+		const now = new Date().toISOString()
 
-	db.run(
-		`DELETE FROM events WHERE end < ? AND status = 'approved'`,
-		[now],
-		function (err) {
-			if (err) {
-				console.error('Ошибка удаления истекших мероприятий:', err)
-			} else if (this.changes > 0) {
-				console.log(`Удалено истекших мероприятий: ${this.changes}`)
+		db.run(
+			`DELETE FROM events WHERE end < ? AND status = 'approved'`,
+			[now],
+			function (err) {
+				if (err) {
+					console.error('Ошибка удаления истекших мероприятий:', err)
+				} else if (this.changes > 0) {
+					console.log(
+						`[${new Date().toLocaleString(
+							'ru-RU'
+						)}] Удалено истекших мероприятий: ${this.changes}`
+					)
+				}
+				closeDb(db)
 			}
-			db.close()
-		}
-	)
+		)
+	} catch (error) {
+		console.error('Ошибка при удалении истекших событий:', error)
+		closeDb(db)
+	}
 }
 
-// Запуск очистки каждые 5 минут и в 4:00 МСК
+// Запуск очистки в 4:00 МСК
 function scheduleDailyCleanup() {
 	const now = new Date()
 	const mskOffset = 3
@@ -443,11 +619,24 @@ function scheduleDailyCleanup() {
 			((24 - mskHour + targetHour) * 60 - mskMinutes) * 60 * 1000
 	}
 
+	console.log(
+		`Следующая ежедневная очистка через ${Math.round(
+			timeToNextCleanup / 1000 / 60
+		)} минут`
+	)
+
 	setTimeout(() => {
+		console.log('[ЕЖЕДНЕВНАЯ ОЧИСТКА] Запуск в 4:00 МСК')
 		removeExpiredEvents()
 		scheduleDailyCleanup()
 	}, timeToNextCleanup)
 }
+
+// Обработка ошибок на уровне приложения
+app.use((err, req, res, next) => {
+	console.error('Необработанная ошибка:', err)
+	res.status(500).json({ error: 'Внутренняя ошибка сервера' })
+})
 
 // Запуск сервера
 async function startServer() {
@@ -455,15 +644,34 @@ async function startServer() {
 		await initDatabase()
 
 		app.listen(PORT, '0.0.0.0', () => {
+			console.log(`====================================`)
 			console.log(`Сервер запущен на порту ${PORT}`)
-			// Запускаем периодическую очистку
-			setInterval(removeExpiredEvents, 5 * 60 * 1000) // Каждые 5 минут
-			scheduleDailyCleanup() // Планируем ежедневную очистку в 4:00 МСК
+			console.log(`Время запуска: ${new Date().toLocaleString('ru-RU')}`)
+			console.log(`====================================`)
+
+			// Запускаем периодическую очистку каждые 5 минут
+			setInterval(removeExpiredEvents, 5 * 60 * 1000)
+			console.log('✓ Автоматическая очистка истекших событий: каждые 5 минут')
+
+			// Планируем ежедневную очистку в 4:00 МСК
+			scheduleDailyCleanup()
+			console.log('✓ Ежедневная очистка запланирована на 4:00 МСК')
 		})
 	} catch (error) {
-		console.error('Ошибка запуска сервера:', error)
+		console.error('Критическая ошибка запуска сервера:', error)
 		process.exit(1)
 	}
 }
+
+// Graceful shutdown
+process.on('SIGINT', () => {
+	console.log('\n Получен сигнал SIGINT, завершение работы...')
+	process.exit(0)
+})
+
+process.on('SIGTERM', () => {
+	console.log('\n Получен сигнал SIGTERM, завершение работы...')
+	process.exit(0)
+})
 
 startServer()

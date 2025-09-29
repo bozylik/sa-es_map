@@ -4,29 +4,52 @@
 		<meta charset="UTF-8" />
 		<meta http-equiv="X-UA-Compatible" content="IE=edge" />
 		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
-		<title>Карта GTA SA</title>
-		<title>BlockNotes - Community App</title>
+		<meta
+			name="description"
+			content="Интерактивная карта мероприятий GTA San Andreas"
+		/>
+		<title>Карта GTA SA - Мероприятия</title>
 		<link rel="stylesheet" href="styles.css" />
 		<link rel="icon" type="image/jpeg" href="icons/logo.jpg" />
 	</head>
 	<body>
+		<!-- Панель управления -->
 		<div class="button-container">
-			<button class="admin-button" id="liveNewsButton">LIVE Новости</button>
-			<button class="admin-button">Информация</button>
-			<button class="admin-button" id="liveNewsButton">LIVE Новости</button>
-			<button class="admin-button">Информация</button>
+			<button
+				class="admin-button"
+				id="liveNewsButton"
+				aria-label="LIVE Новости"
+			>
+				LIVE Новости
+			</button>
+			<button class="admin-button" id="infoButton" aria-label="Информация">
+				Информация
+			</button>
 		</div>
-		<button class="admin-button admin-panel-button" onclick="openAdminLogin()">
+
+		<!-- Кнопка админ-панели -->
+		<button
+			class="admin-button admin-panel-button"
+			onclick="openAdminLogin()"
+			aria-label="Открыть админ-панель"
+		>
 			Админ-панель
 		</button>
-		<button class="tool-button" id="lineToolButton" title="Инструмент линии">
-			<img src="icons/draw.png" alt="Рисование" width="24" height="24" />
+
+		<!-- Инструмент рисования линий -->
+		<button
+			class="tool-button"
+			id="lineToolButton"
+			title="Инструмент линии"
+			aria-label="Инструмент рисования линий"
+		>
 			<svg
 				width="24"
 				height="24"
 				viewBox="0 0 24 24"
 				fill="none"
 				xmlns="http://www.w3.org/2000/svg"
+				aria-hidden="true"
 			>
 				<path
 					d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04c.39-.39.39-1.02 0-1.41l-2.34-2.34c-.39-.39-1.02-.39-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"
@@ -34,77 +57,142 @@
 				/>
 			</svg>
 		</button>
+
+		<!-- Контейнер карты -->
 		<div class="map-scroll-outer">
-			<div class="map-container" id="mapContainer">
-				<img src="gta_sa.png" alt="Карта GTA SA" class="full-map" id="map" />
+			<div
+				class="map-container"
+				id="mapContainer"
+				role="application"
+				aria-label="Интерактивная карта"
+			>
 				<img
 					src="gta_sa.png"
-					alt="BlockNotes - Community App"
+					alt="Карта GTA San Andreas"
 					class="full-map"
 					id="map"
+					draggable="false"
 				/>
-				<div id="markerContainer"></div>
+				<div id="markerContainer" aria-live="polite"></div>
 			</div>
 		</div>
 
 		<!-- Модальное окно для создания мероприятия -->
-		<div class="event-modal" id="eventModal">
+		<div
+			class="event-modal"
+			id="eventModal"
+			role="dialog"
+			aria-labelledby="eventModalTitle"
+			aria-hidden="true"
+		>
 			<form class="event-form" id="eventForm">
+				<h3 id="eventModalTitle">Создание мероприятия</h3>
 				<input
 					type="text"
 					id="eventName"
 					placeholder="Название мероприятия"
+					maxlength="100"
 					required
+					aria-label="Название мероприятия"
 				/>
-				<select id="eventType" required>
+				<select id="eventType" required aria-label="Тип мероприятия">
 					<option value="">Выберите тип мероприятия</option>
 					<option value="government">Государственное</option>
 					<option value="civilian">Гражданское</option>
 					<option value="incident">Происшествие</option>
 				</select>
-				<input type="datetime-local" id="eventStart" required />
-				<input type="datetime-local" id="eventEnd" required />
+				<label for="eventStart">Начало мероприятия:</label>
+				<input
+					type="datetime-local"
+					id="eventStart"
+					required
+					aria-label="Дата и время начала"
+				/>
+				<label for="eventEnd">Окончание мероприятия:</label>
+				<input
+					type="datetime-local"
+					id="eventEnd"
+					required
+					aria-label="Дата и время окончания"
+				/>
 				<textarea
 					id="eventDescription"
 					placeholder="Описание мероприятия"
+					maxlength="500"
 					rows="4"
+					aria-label="Описание мероприятия"
 				></textarea>
-				<div>
-					<button type="submit">Создать</button>
-					<button type="button" onclick="closeEventModal()">Отмена</button>
+				<div class="form-actions">
+					<button type="submit" class="primary-button">Создать</button>
+					<button
+						type="button"
+						onclick="closeEventModal()"
+						class="secondary-button"
+					>
+						Отмена
+					</button>
 				</div>
 			</form>
 		</div>
 
 		<!-- Модальное окно для просмотра мероприятия -->
-		<div class="event-details-modal" id="eventDetailsModal">
+		<div
+			class="event-details-modal"
+			id="eventDetailsModal"
+			role="dialog"
+			aria-labelledby="detailsEventName"
+			aria-hidden="true"
+		>
 			<div class="event-details-content">
 				<h3 id="detailsEventName"></h3>
-				<p><strong>Тип:</strong> <span id="detailsEventType"></span></p>
-				<p><strong>Начало:</strong> <span id="detailsEventStart"></span></p>
-				<p><strong>Конец:</strong> <span id="detailsEventEnd"></span></p>
-				<p><strong>Описание:</strong></p>
-				<p id="detailsEventDescription"></p>
-				<button type="button" onclick="closeEventDetailsModal()">
+				<div class="event-details-info">
+					<p><strong>Тип:</strong> <span id="detailsEventType"></span></p>
+					<p><strong>Начало:</strong> <span id="detailsEventStart"></span></p>
+					<p><strong>Конец:</strong> <span id="detailsEventEnd"></span></p>
+					<p><strong>Описание:</strong></p>
+					<p id="detailsEventDescription" class="event-description"></p>
+				</div>
+				<button
+					type="button"
+					onclick="closeEventDetailsModal()"
+					class="secondary-button"
+				>
 					Закрыть
 				</button>
 			</div>
 		</div>
 
-		<!-- Модальное окно для входа в админ-панели -->
-		<div class="admin-modal" id="adminLoginModal">
+		<!-- Модальное окно для входа в админ-панель -->
+		<div
+			class="admin-modal"
+			id="adminLoginModal"
+			role="dialog"
+			aria-labelledby="adminLoginTitle"
+			aria-hidden="true"
+		>
 			<div class="admin-modal-content">
-				<h3>Вход в админ-панель</h3>
+				<h3 id="adminLoginTitle">Вход в админ-панель</h3>
 				<input
 					type="password"
 					id="adminCode"
 					placeholder="Введите код доступа"
+					maxlength="20"
+					aria-label="Код доступа"
+					autocomplete="off"
 				/>
 				<div class="button-group">
-					<button onclick="handleAdminLogin()" class="primary-button">
+					<button
+						onclick="handleAdminLogin()"
+						class="primary-button"
+						aria-label="Войти в админ-панель"
+					>
 						Войти
 					</button>
-					<button onclick="closeAdminLogin()" class="secondary-button">
+					<button
+						onclick="closeAdminLogin()"
+						class="secondary-button"
+						aria-label="Отменить вход"
+					>
 						Отмена
 					</button>
 				</div>
@@ -112,29 +200,63 @@
 		</div>
 
 		<!-- Модальное окно админ-панели -->
-		<div class="admin-modal" id="adminPanelModal">
+		<div
+			class="admin-modal"
+			id="adminPanelModal"
+			role="dialog"
+			aria-labelledby="adminPanelTitle"
+			aria-hidden="true"
+		>
 			<div class="admin-modal-content">
-				<h3>Панель управления</h3>
-				<div class="admin-tabs">
-					<button class="tab-button active" onclick="switchAdminTab('events')">
+				<h3 id="adminPanelTitle">Панель управления</h3>
+				<div class="admin-tabs" role="tablist">
+					<button
+						class="tab-button active"
+						onclick="switchAdminTab('events')"
+						role="tab"
+						aria-selected="true"
+						aria-controls="eventsTab"
+					>
 						Мероприятия
 					</button>
-					<button class="tab-button" onclick="switchAdminTab('queue')">
+					<button
+						class="tab-button"
+						onclick="switchAdminTab('queue')"
+						role="tab"
+						aria-selected="false"
+						aria-controls="queueTab"
+					>
 						Очередь
 					</button>
 				</div>
-				<div class="admin-tab-content" id="eventsTab">
+				<div
+					class="admin-tab-content"
+					id="eventsTab"
+					role="tabpanel"
+					aria-labelledby="eventsTabButton"
+				>
 					<div class="admin-events-list" id="adminEventList"></div>
 				</div>
-				<div class="admin-tab-content" id="queueTab" style="display: none">
+				<div
+					class="admin-tab-content"
+					id="queueTab"
+					style="display: none"
+					role="tabpanel"
+					aria-labelledby="queueTabButton"
+				>
 					<div class="queue-events-list" id="queueEventList"></div>
 				</div>
-				<button onclick="closeAdminPanel()" class="secondary-button">
+				<button
+					onclick="closeAdminPanel()"
+					class="secondary-button"
+					aria-label="Закрыть админ-панель"
+				>
 					Закрыть
 				</button>
 			</div>
 		</div>
 
+		<!-- Скрипты -->
 		<script src="db.js"></script>
 		<script src="main.js"></script>
 	</body>

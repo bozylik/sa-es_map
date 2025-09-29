@@ -29,7 +29,7 @@ body {
 	position: relative;
 	background: #000;
 	overflow: hidden;
-	cursor: grab;
+	cursor: grab; /* добавлено */
 }
 
 #markerContainer {
@@ -39,7 +39,7 @@ body {
 	width: 100%;
 	height: 100%;
 	pointer-events: none;
-	transform-origin: 0 0;
+	transform-origin: 0 0; /* изменено с 50% 50% */
 }
 
 .full-map {
@@ -54,8 +54,8 @@ body {
 	position: absolute;
 	top: 0;
 	left: 0;
-	cursor: grab;
-	transform-origin: 0 0;
+	cursor: grab; /* изменено с crosshair */
+	transform-origin: 0 0; /* добавлено */
 }
 
 .event-modal {
@@ -125,17 +125,6 @@ body {
 	pointer-events: auto;
 }
 
-.event-marker.government {
-	background-image: url('icons/government.png');
-}
-
-.event-marker.civilian {
-	background-image: url('icons/civil.png');
-}
-
-.event-marker.incident {
-	background-image: url('icons/warning.png');
-}
 
 .event-details-modal {
 	display: none;
@@ -198,7 +187,7 @@ body {
 	min-width: 400px;
 	max-width: 600px;
 	box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
-	max-height: 80vh;
+	max-height: 80vh; /* Максимальная высота самого модального окна */
 	overflow-y: auto;
 }
 
@@ -283,7 +272,8 @@ body {
 
 .admin-tab-content {
 	margin-bottom: 20px;
-	max-height: none;
+	/* Убираем жесткий overflow: hidden, чтобы не блокировать прокрутку списков */
+	max-height: none; /* Или можно задать, например, 60vh, но auto лучше */
 	overflow-y: visible;
 }
 
@@ -453,7 +443,7 @@ body {
 	top: 10px;
 	right: 10px;
 	padding: 12px;
-	background: #ffd700;
+	background: #ffd700; /* Жёлтый цвет фона */
 	border: none;
 	border-radius: 50%;
 	cursor: pointer;
@@ -465,20 +455,25 @@ body {
 	z-index: 1002;
 	width: 50px;
 	height: 50px;
+@@ -465,14 +465,46 @@
+	align-items: center;
+	justify-content: center;
+	box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2);
+	transition: all 0.3s ease;
 }
 
 .tool-button:hover {
-	background: #ffc107;
+	background: #ffc107; /* Более тёмный оттенок жёлтого при наведении */
 	transform: scale(1.1);
 }
 
 .tool-button.active {
-	background: #4caf50;
+	background: #4caf50; /* Зелёный цвет при активации */
 	color: white;
 }
 
 .draw-line-button {
-	background: #ffd700;
+	background: #ffd700; /* Жёлтый цвет фона */
 	color: white;
 	border: none;
 	padding: 12px;
@@ -496,32 +491,28 @@ body {
 }
 
 .draw-line-button:hover {
-	background: #ffc107;
+	background: #ffc107; /* Более тёмный оттенок жёлтого при наведении */
 	transform: scale(1.1);
 }
 
 .draw-line-button.active {
-	background: #ffa000;
+	background: #ffa000; /* Ещё более тёмный оттенок жёлтого когда активна */
 	box-shadow: 0 0 10px rgba(255, 215, 0, 0.5);
 	color: white;
 }
 
 .temp-line {
-	position: absolute;
-	pointer-events: none;
-	z-index: 999;
-}
-
+@@ -495,110 +527,110 @@
 /* Styles for admin panel lists */
 .admin-events-list,
 .queue-events-list {
-	max-height: calc(50vh - 60px);
+	max-height: calc(50vh - 60px); /* Updated to adaptive height */
 	overflow-y: auto;
 	margin: 10px 0;
 	background: #fff;
-	border-radius: 8px;
-	padding: 15px;
-	box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+	border-radius: 8px; /* Increased border radius */
+	padding: 15px; /* Added padding */
+	box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1); /* Added shadow */
 }
 
 /* Enhanced scrollbar styling for Webkit browsers */
@@ -534,7 +525,7 @@ body {
 .queue-events-list::-webkit-scrollbar-thumb {
 	background-color: #b3b3b3;
 	border-radius: 5px;
-	border: 2px solid #fff;
+	border: 2px solid #fff; /* Added border */
 }
 
 .admin-events-list::-webkit-scrollbar-track,
@@ -544,11 +535,8 @@ body {
 }
 
 /* Existing Firefox scrollbar styles remain unchanged */
-.admin-events-list,
-.queue-events-list {
-	scrollbar-width: thin;
-	scrollbar-color: #b3b3b3 transparent;
-}
+scrollbar-width: thin;
+scrollbar-color: #b3b3b3 transparent;
 
 .event-item,
 .queue-item {
@@ -626,5 +614,5 @@ body {
 }
 
 map {
-	transform-origin: 0 0;
+	transform-origin: 0 0; /* чтобы математика совпадала */
 }
